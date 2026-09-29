@@ -21,6 +21,11 @@ var _saved_pose: String = ""
 ## dropping frames in a headset rather than merely rendering slowly.
 var _authored_quality: Dictionary = {}
 
+## Tracks fullscreen state for headless mode and environments where window mode queries
+## are non-blocking or virtualized.
+var _is_fullscreen_state: bool = false
+var _was_fullscreen: bool = false
+
 const DEFAULT_BUNDLE := "res://tests/fixtures/tiny_bundle"
 
 
@@ -34,6 +39,12 @@ func _ready() -> void:
 		xr_interface.is_session_supported("immersive-vr")
 	$CanvasLayer/EnterVR.pressed.connect(_enter_vr)
 	$CanvasLayer/EnterVR.visible = false
+
+	$CanvasLayer/Fullscreen.pressed.connect(_toggle_fullscreen)
+	$CanvasLayer/StoryPanel.visibility_changed.connect(_update_fullscreen_button_layout)
+	get_tree().root.size_changed.connect(_on_window_size_changed)
+	_update_fullscreen_button_layout()
+	_update_fullscreen_button()
 
 	_loader = BundleLoader.new()
 	add_child(_loader)
@@ -87,21 +98,26 @@ func _resolve_view_value() -> String:
 	return ""
 
 
-## Press V to print the current view as a shareable URL. The print lands in the browser console
-## (F12), so a specific viewpoint can be copied out of a running session and handed to someone
-## else -- including back to a developer reproducing a rendering artifact.
+## Key shortcuts:
+## - V: prints current view as a shareable URL to the console
+## - F / F11: toggles fullscreen mode
+## - Escape: exits fullscreen mode
 func _unhandled_key_input(event: InputEvent) -> void:
 	if not (event is InputEventKey and event.pressed and not event.echo):
 		return
-	if (event as InputEventKey).keycode != KEY_V:
-		return
-	var pose: String = ($Camera3D as OrbitCamera).pose_string()
-	if OS.has_feature("web"):
-		var href = JavaScriptBridge.eval("location.origin + location.pathname", true)
-		var bundle := _bundle_base_url.get_file()
-		print("view URL: %s?bundle=%s&view=%s" % [href, bundle, pose])
-	else:
-		print("view: %s" % [pose])
+	var key := (event as InputEventKey).keycode
+	if key == KEY_V:
+		var pose: String = ($Camera3D as OrbitCamera).pose_string()
+		if OS.has_feature("web"):
+			var href = JavaScriptBridge.eval("location.origin + location.pathname", true)
+			var bundle := _bundle_base_url.get_file()
+			print("view URL: %s?bundle=%s&view=%s" % [href, bundle, pose])
+		else:
+			print("view: %s" % [pose])
+	elif key == KEY_F or key == KEY_F11:
+		_toggle_fullscreen()
+	elif key == KEY_ESCAPE and _is_fullscreen():
+		_exit_fullscreen()
 
 
 ## Points each in-VR panel quad at its SubViewport's live texture.
@@ -228,6 +244,11 @@ func _apply_quality_tier() -> void:
 ## meaningful value once tracking has settled.
 func _process(_delta: float) -> void:
 	_refresh_save_status()
+	if not OS.has_feature("web"):
+		var fs := _is_fullscreen()
+		if fs != _was_fullscreen:
+			_was_fullscreen = fs
+			_update_fullscreen_button()
 
 	if xr_interface == null or not get_viewport().use_xr:
 		return
@@ -393,6 +414,8 @@ func _on_loaded(manifest: Dictionary, specimens: Dictionary) -> void:
 	var story: Array = manifest.get("story", [])
 	$CanvasLayer/StoryPanel.set_story(story, _bundle_base_url)
 	$XROrigin3D/StoryViewport/StoryPanel.set_story(story, _bundle_base_url)
+	$XROrigin3D/StoryQuad.visible = not story.is_empty()
+	_update_fullscreen_button_layout()
 
 
 func _on_failed(message: String) -> void:
@@ -420,14 +443,82 @@ func _exit_vr() -> void:
 		xr_interface.uninitialize()
 	get_viewport().use_xr = false
 	$CanvasLayer/EnterVR.visible = true
+	$CanvasLayer/Fullscreen.visible = true
 
 
 func _on_session_started() -> void:
 	get_viewport().use_xr = true
 	$CanvasLayer/EnterVR.visible = false
+	$CanvasLayer/Fullscreen.visible = false
 	_apply_quality_tier()
 
 
 func _on_session_ended() -> void:
 	get_viewport().use_xr = false
+	$CanvasLayer/Fullscreen.visible = true
 	_apply_quality_tier()
+
+
+## True when the application is currently running fullscreen.
+func _is_fullscreen() -> bool:
+	if OS.has_feature("web"):
+		var js_fs = JavaScriptBridge.eval("Boolean(document.fullscreenElement)", true)
+		if js_fs != null:
+			return bool(js_fs)
+	var mode := DisplayServer.window_get_mode()
+	if mode == DisplayServer.WINDOW_MODE_FULLSCREEN or mode == DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN:
+		return true
+	return _is_fullscreen_state
+
+
+## Toggles window mode between windowed and fullscreen.
+func _toggle_fullscreen() -> void:
+	if _is_fullscreen():
+		_exit_fullscreen()
+	else:
+		_enter_fullscreen()
+
+
+func _enter_fullscreen() -> void:
+	_is_fullscreen_state = true
+	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+	_update_fullscreen_button()
+
+
+func _exit_fullscreen() -> void:
+	_is_fullscreen_state = false
+	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+	if OS.has_feature("web"):
+		JavaScriptBridge.eval("if (document.exitFullscreen && document.fullscreenElement) { document.exitFullscreen(); }", true)
+	_update_fullscreen_button()
+
+
+func _update_fullscreen_button() -> void:
+	if not has_node("CanvasLayer/Fullscreen"):
+		return
+	var btn: Button = $CanvasLayer/Fullscreen
+	var fs := _is_fullscreen()
+	_was_fullscreen = fs
+	btn.text = "Exit Fullscreen" if fs else "Fullscreen"
+
+
+## Positions the fullscreen button in the lower-right corner. When the story panel is open,
+## it sits just to the left of the story sidebar; when closed or empty, it sits against the
+## window's right edge margin.
+func _update_fullscreen_button_layout() -> void:
+	if not has_node("CanvasLayer/Fullscreen"):
+		return
+	var btn: Button = $CanvasLayer/Fullscreen
+	var story: StoryPanel = get_node_or_null("CanvasLayer/StoryPanel")
+	var right_margin: float = 16.0
+	if story and story.visible:
+		right_margin = absf(story.offset_left) + 16.0
+	btn.offset_right = -right_margin
+	btn.offset_left = -right_margin - 130.0
+	btn.offset_bottom = -16.0
+	btn.offset_top = -52.0
+
+
+func _on_window_size_changed() -> void:
+	_update_fullscreen_button()
+	_update_fullscreen_button_layout()

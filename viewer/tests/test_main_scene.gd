@@ -116,3 +116,49 @@ func test_authored_quality_is_capped_in_xr() -> void:
 
 	var panel: DisplaySettingsPanel = main.get_node("CanvasLayer/DisplaySettingsPanel")
 	assert_that(panel.get_display()["max_steps"]).is_equal(Quality.XR_STEPS)
+
+func test_fullscreen_button_exists_and_defaults_to_fullscreen_text() -> void:
+	var main := await _make_main()
+	var btn: Button = main.get_node("CanvasLayer/Fullscreen")
+	assert_that(btn).is_not_null()
+	assert_that(btn.text).is_equal("Fullscreen")
+	assert_bool(btn.visible).is_true()
+
+
+func test_fullscreen_button_toggles_mode_and_updates_text() -> void:
+	var main := await _make_main()
+	var btn: Button = main.get_node("CanvasLayer/Fullscreen")
+
+	main._toggle_fullscreen()
+	assert_bool(main._is_fullscreen()).is_true()
+	assert_that(btn.text).is_equal("Exit Fullscreen")
+
+	main._toggle_fullscreen()
+	assert_bool(main._is_fullscreen()).is_false()
+	assert_that(btn.text).is_equal("Fullscreen")
+
+
+func test_fullscreen_button_hidden_in_xr() -> void:
+	var main := await _make_main()
+	var btn: Button = main.get_node("CanvasLayer/Fullscreen")
+
+	main._on_session_started()
+	assert_bool(btn.visible).is_false()
+
+	main._on_session_ended()
+	assert_bool(btn.visible).is_true()
+
+
+func test_fullscreen_button_layout_adapts_to_story_panel() -> void:
+	var main := await _make_main()
+	var btn: Button = main.get_node("CanvasLayer/Fullscreen")
+	var story: StoryPanel = main.get_node("CanvasLayer/StoryPanel")
+
+	story.visible = false
+	main._update_fullscreen_button_layout()
+	assert_float(btn.offset_right).is_equal_approx(-16.0, 0.1)
+
+	story.visible = true
+	main._update_fullscreen_button_layout()
+	assert_float(btn.offset_right).is_equal_approx(-336.0, 0.1)
+

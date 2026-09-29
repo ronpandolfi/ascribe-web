@@ -32,6 +32,7 @@ func set_story(pages: Array, base_url: String) -> void:
 	_pages = pages
 	_base_url = base_url
 	_page_index = 0
+	visible = not _pages.is_empty()
 	if not _pages.is_empty():
 		_render_page(0, false)
 
