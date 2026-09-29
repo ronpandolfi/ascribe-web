@@ -73,3 +73,51 @@ func test_literal_word_img_in_prose_is_untouched() -> void:
 	var result: Dictionary = MdToBBCode.convert(md, "img")
 	assert_that(result["text"]).is_equal(md)
 	assert_that(result["images"]).is_equal(PackedStringArray())
+
+
+func test_soft_line_breaks_within_paragraph_collapse_to_spaces() -> void:
+	var md := "First line of a paragraph.\nSecond line of the same paragraph.\nThird line."
+	var result: Dictionary = MdToBBCode.convert(md, "img")
+	assert_that(result["text"]).is_equal("First line of a paragraph. Second line of the same paragraph. Third line.")
+
+
+func test_hard_line_break_with_two_trailing_spaces_preserves_newline() -> void:
+	var md := "First line with hard break.  \nSecond line."
+	var result: Dictionary = MdToBBCode.convert(md, "img")
+	assert_that(result["text"]).is_equal("First line with hard break.\nSecond line.")
+
+
+func test_hard_line_break_with_backslash_preserves_newline() -> void:
+	var md := "First line with backslash break.\\\nSecond line."
+	var result: Dictionary = MdToBBCode.convert(md, "img")
+	assert_that(result["text"]).is_equal("First line with backslash break.\nSecond line.")
+
+
+func test_multiple_blank_lines_collapse_to_single_paragraph_break() -> void:
+	var md := "Paragraph 1\n\n\n\nParagraph 2"
+	var result: Dictionary = MdToBBCode.convert(md, "img")
+	assert_that(result["text"]).is_equal("Paragraph 1\n\nParagraph 2")
+
+
+func test_header_and_paragraph_stay_on_separate_lines() -> void:
+	var md := "# Title\nFirst line of paragraph.\nSecond line."
+	var result: Dictionary = MdToBBCode.convert(md, "img")
+	assert_that(result["text"]).is_equal("[font_size=24]Title[/font_size]\nFirst line of paragraph. Second line.")
+
+
+func test_list_items_stay_on_separate_lines() -> void:
+	var md := "The list:\n- First item\n- Second item"
+	var result: Dictionary = MdToBBCode.convert(md, "img")
+	assert_that(result["text"]).is_equal("The list:\n- First item\n- Second item")
+
+
+func test_list_item_with_wrapped_line_collapses_to_space() -> void:
+	var md := "- First item line 1\n  line 2\n- Second item"
+	var result: Dictionary = MdToBBCode.convert(md, "img")
+	assert_that(result["text"]).is_equal("- First item line 1 line 2\n- Second item")
+
+
+func test_bold_spanning_across_line_break_formats_correctly() -> void:
+	var md := "This is **bold\ntext** across lines."
+	var result: Dictionary = MdToBBCode.convert(md, "img")
+	assert_that(result["text"]).is_equal("This is [b]bold text[/b] across lines.")

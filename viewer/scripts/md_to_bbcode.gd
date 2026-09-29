@@ -35,6 +35,91 @@ static func _ensure_compiled() -> void:
 	_img_re.compile("!\\[[^\\]]*\\]\\(([^)]+)\\)")
 
 
+static func _is_header(line: String) -> bool:
+	return line.begins_with("# ") or line.begins_with("## ") or line.begins_with("### ") or line.begins_with("#### ")
+
+
+static func _is_list_item(line: String) -> bool:
+	var stripped := line.strip_edges(true, false)
+	if stripped.begins_with("- ") or stripped.begins_with("* ") or stripped.begins_with("+ "):
+		return true
+	if stripped.length() >= 3 and stripped[0].is_valid_int():
+		var dot_pos := stripped.find(". ")
+		if dot_pos > 0:
+			var prefix := stripped.substr(0, dot_pos)
+			if prefix.is_valid_int():
+				return true
+	return false
+
+
+## Collapses soft line breaks within paragraphs into spaces (per standard markdown semantics),
+## while preserving paragraph breaks (empty lines), hard line breaks (two trailing spaces or
+## backslash), headers, and list items.
+static func _collapse_line_breaks(text: String) -> String:
+	var raw_lines := text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+	var result_lines: Array[String] = []
+	var current_line := ""
+
+	for raw in raw_lines:
+		var trimmed := raw.strip_edges()
+		if trimmed.is_empty():
+			if not current_line.is_empty():
+				result_lines.append(current_line)
+				current_line = ""
+			if not result_lines.is_empty() and result_lines.back() != "":
+				result_lines.append("")
+			continue
+
+		var has_hard_break := raw.ends_with("  ") or raw.ends_with("\\")
+		var line_content := raw
+		if raw.ends_with("  "):
+			line_content = raw.strip_edges(false, true)
+		elif raw.ends_with("\\"):
+			line_content = raw.left(-1).strip_edges(false, true)
+		else:
+			line_content = raw.strip_edges(false, true)
+
+		var is_header := _is_header(trimmed)
+		var is_list := _is_list_item(raw)
+
+		if is_header:
+			if not current_line.is_empty():
+				result_lines.append(current_line)
+				current_line = ""
+			result_lines.append(trimmed)
+			continue
+
+		if is_list:
+			if not current_line.is_empty():
+				result_lines.append(current_line)
+				current_line = ""
+			if has_hard_break:
+				result_lines.append(line_content)
+			else:
+				current_line = line_content
+			continue
+
+		# Continuation or new paragraph line
+		if current_line.is_empty():
+			if has_hard_break:
+				result_lines.append(line_content)
+			else:
+				current_line = line_content
+		else:
+			current_line += " " + line_content.strip_edges(true, false)
+			if has_hard_break:
+				result_lines.append(current_line)
+				current_line = ""
+
+	if not current_line.is_empty():
+		result_lines.append(current_line)
+
+	while not result_lines.is_empty() and result_lines.back() == "":
+		result_lines.pop_back()
+
+	return "\n".join(result_lines)
+
+
 ## Converts `md` to BBCode. Returns a Dictionary:
 ##   {"text": String, "images": PackedStringArray}
 ## `text` is the converted BBCode, with each image replaced by a unique indexed placeholder
@@ -50,6 +135,8 @@ static func _ensure_compiled() -> void:
 ## markdown conversion, per spec.
 static func convert(md: String, base_url: String) -> Dictionary:
 	_ensure_compiled()
+
+	md = _collapse_line_breaks(md)
 
 	var images := PackedStringArray()
 	var text := ""
