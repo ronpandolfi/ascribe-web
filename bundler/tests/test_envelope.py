@@ -36,3 +36,46 @@ def test_volume_envelope_float16():
 def test_volume_envelope_rejects_float32():
     with pytest.raises(ValueError, match="float16 or uint8"):
         volume_envelope(np.zeros((2, 2, 2), dtype=np.float32))
+
+
+from ascribe_bundle.envelope import mesh_envelope
+
+
+def test_mesh_envelope():
+    verts = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=np.float32)
+    indices = np.array([0, 1, 2], dtype=np.uint32)
+    normals = np.array([[0, 0, 1], [0, 0, 1], [0, 0, 1]], dtype=np.float32)
+
+    data = mesh_envelope(verts, indices, normals)
+    pre, payload = read_envelope(data)
+    assert pre["type"] == "mesh"
+    assert pre["vertex_count"] == 3
+    assert pre["index_count"] == 3
+    assert pre["normal_count"] == 3
+
+    # Check payload slicing
+    v_bytes = 3 * 3 * 4
+    i_bytes = 3 * 4
+    n_bytes = 3 * 3 * 4
+    assert len(payload) == v_bytes + i_bytes + n_bytes
+
+    got_v = np.frombuffer(payload[:v_bytes], dtype="<f4").reshape(-1, 3)
+    got_i = np.frombuffer(payload[v_bytes : v_bytes + i_bytes], dtype="<u4")
+    got_n = np.frombuffer(payload[v_bytes + i_bytes :], dtype="<f4").reshape(-1, 3)
+
+    assert np.allclose(got_v, verts)
+    assert np.array_equal(got_i, indices)
+    assert np.allclose(got_n, normals)
+
+
+def test_mesh_envelope_without_normals():
+    verts = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=np.float32)
+    indices = np.array([0, 1, 2], dtype=np.uint32)
+
+    data = mesh_envelope(verts, indices)
+    pre, payload = read_envelope(data)
+    assert pre["type"] == "mesh"
+    assert pre["vertex_count"] == 3
+    assert pre["index_count"] == 3
+    assert pre["normal_count"] == 0
+    assert len(payload) == (3 * 3 * 4) + (3 * 4)

@@ -1,0 +1,41 @@
+[gd_resource type="ShaderMaterial" load_steps=11 format=3 uid="uid://b04xjpescrup5"]
+
+[ext_resource type="Shader" path="res://shaders/crystal.gdshader" id="1_pj0c4"]
+
+[sub_resource type="Gradient" id="Gradient_phhhr"]
+offsets = PackedFloat32Array(0, 0.772727)
+
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_5w6nj"]
+
+[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_wjwk1"]
+color_ramp = SubResource("Gradient_phhhr")
+noise = SubResource("FastNoiseLite_5w6nj")
+
+[sub_resource type="Gradient" id="Gradient_sxtts"]
+offsets = PackedFloat32Array(0, 0.780303)
+
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_rfrcl"]
+
+[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_v0j86"]
+color_ramp = SubResource("Gradient_sxtts")
+noise = SubResource("FastNoiseLite_rfrcl")
+
+[sub_resource type="Gradient" id="Gradient_yktrg"]
+offsets = PackedFloat32Array(0, 0.318182, 0.717172, 1)
+colors = PackedColorArray(0.652615, 0.0041198, 0.994567, 1, 0.386667, 0.2, 1, 1, 0.04, 0.696, 1, 1, 1, 1, 1, 1)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_ypk3k"]
+gradient = SubResource("Gradient_yktrg")
+fill_from = Vector2(1, 1)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_uymg6"]
+gradient = SubResource("Gradient_yktrg")
+fill_from = Vector2(1, 1)
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_pj0c4")
+shader_parameter/colorGradient1 = SubResource("GradientTexture2D_ypk3k")
+shader_parameter/colorGradient2 = SubResource("GradientTexture2D_uymg6")
+shader_parameter/NoiseTexture_Alpha = SubResource("NoiseTexture2D_wjwk1")
+shader_parameter/NoiseTexture_Specular = SubResource("NoiseTexture2D_v0j86")

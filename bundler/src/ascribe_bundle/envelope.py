@@ -43,3 +43,36 @@ def volume_envelope(arr: np.ndarray, spacing=(1, 1, 1), origin=(0, 0, 0)) -> byt
     }
     payload = np.ascontiguousarray(arr).astype(arr.dtype.newbyteorder("<")).tobytes()
     return write_envelope(preamble, [payload])
+
+
+def mesh_envelope(
+    vertices: np.ndarray,
+    indices: np.ndarray,
+    normals: np.ndarray | None = None,
+) -> bytes:
+    """Builds a binary envelope for mesh data.
+
+    Vertices: (V, 3) float32.
+    Indices: (I,) uint32.
+    Normals: (V, 3) float32 (or (N, 3)), optional. If omitted or empty, normal_count is 0.
+    """
+    v_arr = np.ascontiguousarray(vertices, dtype="<f4").reshape(-1, 3)
+    i_arr = np.ascontiguousarray(indices, dtype="<u4").ravel()
+
+    vc = len(v_arr)
+    ic = len(i_arr)
+    nc = 0
+    blocks = [v_arr.tobytes(), i_arr.tobytes()]
+
+    if normals is not None and len(normals) > 0:
+        n_arr = np.ascontiguousarray(normals, dtype="<f4").reshape(-1, 3)
+        nc = len(n_arr)
+        blocks.append(n_arr.tobytes())
+
+    preamble = {
+        "type": "mesh",
+        "vertex_count": vc,
+        "index_count": ic,
+        "normal_count": nc,
+    }
+    return write_envelope(preamble, blocks)

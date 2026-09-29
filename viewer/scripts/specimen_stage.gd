@@ -31,16 +31,21 @@ func clear() -> void:
 	current_id = ""
 
 
-## Applies display settings (gamma/opacity/gradient/max_steps/step_size) to the currently staged
-## volume's shader material. No-op if nothing is staged, or the staged specimen is a mesh.
+## Applies display settings to the currently staged specimen.
+## For volumes: applies gamma/opacity/gradient/max_steps/step_size.
+## For meshes: applies shader material if "shader" is specified in display.
 func apply_display(display: Dictionary) -> void:
 	var mesh_instance := _current_mesh_instance()
 	if mesh_instance == null:
 		return
-	var mat: ShaderMaterial = mesh_instance.get_surface_override_material(0)
-	if mat == null or mat.shader != VOLUME_SHADER:
-		return
-	_apply_display_to_material(mat, display)
+	var mat: Material = mesh_instance.get_surface_override_material(0)
+	if mat is ShaderMaterial and (mat as ShaderMaterial).shader == VOLUME_SHADER:
+		_apply_display_to_material(mat as ShaderMaterial, display)
+	elif display.has("shader"):
+		var shader_name: String = str(display.get("shader", "glass"))
+		var new_mat := _resolve_mesh_material(shader_name)
+		if new_mat != null:
+			mesh_instance.set_surface_override_material(0, new_mat)
 
 
 func _current_mesh_instance() -> MeshInstance3D:
@@ -69,10 +74,20 @@ func _stage_volume(vol: WebVolumetricData, display: Dictionary) -> void:
 	add_child(mesh_instance)
 
 
-func _stage_mesh(mesh_data: WebMeshData, _display: Dictionary) -> void:
+func _stage_mesh(mesh_data: WebMeshData, display: Dictionary) -> void:
+	if display.get("flip_normals", false) != mesh_data.flip_normals:
+		mesh_data.flip_normals = display.get("flip_normals", false)
+		mesh_data.invalidate_mesh()
+
 	var mesh := mesh_data.get_mesh()
 	var mesh_instance := MeshInstance3D.new()
 	mesh_instance.mesh = mesh
+
+	var shader_name: String = str(display.get("shader", "glass"))
+	var mat := _resolve_mesh_material(shader_name)
+	if mat != null:
+		mesh_instance.set_surface_override_material(0, mat)
+
 	add_child(mesh_instance)
 
 	if mesh != null:
@@ -161,3 +176,29 @@ func set_eye_offsets(left: Vector3, right: Vector3) -> void:
 ## what the shader's `eye_offsets` expects. Pure math so it can be tested without a headset.
 static func eye_offset_in_view_space(head: Transform3D, eye: Transform3D) -> Vector3:
 	return head.affine_inverse() * eye.origin
+
+
+func _resolve_mesh_material(shader_name: String) -> Material:
+	var name_clean := shader_name.to_lower().strip_edges()
+	if name_clean.is_empty():
+		name_clean = "glass"
+
+	var tres_path := "res://shaders/" + name_clean + ".tres"
+	var shader_path := "res://shaders/" + name_clean + ".gdshader"
+
+	if ResourceLoader.exists(tres_path):
+		var res := load(tres_path)
+		if res is Material:
+			return (res as Material).duplicate()
+	if ResourceLoader.exists(shader_path):
+		var sh := load(shader_path)
+		if sh is Shader:
+			var sm := ShaderMaterial.new()
+			sm.shader = sh
+			return sm
+
+	if name_clean != "glass":
+		return _resolve_mesh_material("glass")
+
+	push_error("SpecimenStage: failed to load default mesh shader (glass)")
+	return null

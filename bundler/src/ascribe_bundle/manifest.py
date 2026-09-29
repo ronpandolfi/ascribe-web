@@ -26,6 +26,8 @@ SCHEMA = {
                             "gradient": {"type": "array", "items": {
                                 "type": "array", "prefixItems": [
                                     {"type": "number"}, {"type": "string"}]}},
+                            "shader": {"type": "string"},
+                            "flip_normals": {"type": "boolean"},
                         },
                     },
                 },

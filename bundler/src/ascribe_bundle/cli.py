@@ -12,7 +12,20 @@ from pathlib import Path
 import numpy as np
 
 from .colormaps import gradient_stops, list_colormaps
-from .envelope import read_envelope, volume_envelope
+from .envelope import mesh_envelope, read_envelope, volume_envelope
+from .stl import load_stl
+
+MESH_SHADERS = [
+    "glass",
+    "crystal",
+    "brick",
+    "water",
+    "pearl",
+    "holographic",
+    "edges",
+    "jello",
+    "hologram",
+]
 from .manifest import DEFAULT_GRADIENT, make_manifest, validate_manifest
 from .story import parse_story
 from .volume import convert_volume, load_volume
@@ -31,6 +44,10 @@ def build(args) -> int:
             return 1
         env = data
         spec_type = pre.get("type", "volume")
+    elif src.suffix.lower() == ".stl":
+        verts, indices, normals = load_stl(src)
+        env = mesh_envelope(verts, indices, normals)
+        spec_type = "mesh"
     else:
         arr = convert_volume(load_volume(src),
                              "uint8" if args.dtype == "u8" else "float16",
@@ -60,12 +77,17 @@ def build(args) -> int:
             dest_img.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(src_img, dest_img)
 
-    gradient = DEFAULT_GRADIENT
-    if args.colormap:
-        lo, hi = args.colormap_alpha
-        gradient = gradient_stops(args.colormap, alpha_lo=lo, alpha_hi=hi)
-    specimen = {"id": "specimen_0", "type": spec_type, "data": data_name,
-                "display": {"gamma": args.gamma, "opacity": 1.0, "gradient": gradient}}
+    if spec_type == "mesh":
+        display = {"shader": args.shader or "glass"}
+        if getattr(args, "flip_normals", False):
+            display["flip_normals"] = True
+    else:
+        gradient = DEFAULT_GRADIENT
+        if args.colormap:
+            lo, hi = args.colormap_alpha
+            gradient = gradient_stops(args.colormap, alpha_lo=lo, alpha_hi=hi)
+        display = {"gamma": args.gamma, "opacity": 1.0, "gradient": gradient}
+    specimen = {"id": "specimen_0", "type": spec_type, "data": data_name, "display": display}
     for page in pages:
         if page["specimen"] is None:
             page["specimen"] = "specimen_0"
@@ -240,7 +262,7 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="ascribe-bundle")
     sub = p.add_subparsers(dest="cmd", required=True)
     b = sub.add_parser("build", help="bake a bundle from a volume + story")
-    b.add_argument("input", help=".npy / .tif volume, or a pre-baked .bin envelope")
+    b.add_argument("input", help=".npy / .tif volume, .stl mesh, or a pre-baked .bin envelope")
     b.add_argument("--story", help="markdown story file")
     b.add_argument("--title", default=None)
     b.add_argument("--dtype", choices=["float16", "u8"], default="float16")
@@ -261,6 +283,11 @@ def main(argv=None) -> int:
                         "invisible; at or above HI is solid")
     b.add_argument("--gamma", type=float, default=1.0,
                    help="gamma applied to the value before the transfer function is looked up")
+    b.add_argument("--shader", choices=MESH_SHADERS, default="glass",
+                   help="shader to statically set in the bundle for mesh rendering (default: glass; "
+                        "choices: glass, crystal, brick, water, pearl, holographic, edges, jello, hologram)")
+    b.add_argument("--flip-normals", action="store_true",
+                   help="invert mesh winding/normals")
     b.add_argument("--size-warn-mb", type=float, default=100)
     b.add_argument("-o", "--output", required=True)
     b.set_defaults(func=build)

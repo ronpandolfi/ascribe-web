@@ -160,3 +160,75 @@ func test_lateral_jitter_can_be_disabled_by_the_manifest() -> void:
 			mesh_child = child
 	var mat: ShaderMaterial = mesh_child.get_surface_override_material(0)
 	assert_float(mat.get_shader_parameter("lateral_jitter")).is_equal_approx(0.0, 0.001)
+
+
+func _build_test_mesh_data() -> WebMeshData:
+	var md := WebMeshData.new()
+	md.vertices = PackedFloat32Array([0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0])
+	md.indices = PackedInt32Array([0, 1, 2])
+	md.normals = PackedFloat32Array([0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0])
+	return md
+
+
+func test_stage_mesh_applies_glass_shader_by_default() -> void:
+	var stage: SpecimenStage = auto_free(SpecimenStage.new())
+	add_child(stage)
+
+	var mesh_data := _build_test_mesh_data()
+	stage.stage("mesh_specimen_0", mesh_data, {})
+
+	assert_that(stage.current_id).is_equal("mesh_specimen_0")
+	assert_that(_count_mesh_children(stage)).is_equal(1)
+
+	var mesh_child: MeshInstance3D = null
+	for child in stage.get_children():
+		if child is MeshInstance3D:
+			mesh_child = child
+	assert_that(mesh_child).is_not_null()
+
+	var mat: Material = mesh_child.get_surface_override_material(0)
+	assert_that(mat).is_not_null()
+	assert_that(mat is ShaderMaterial).is_true()
+	var sm := mat as ShaderMaterial
+	assert_that(sm.shader.resource_path).is_equal("res://shaders/glass.gdshader")
+
+
+func test_stage_mesh_applies_specified_shader() -> void:
+	var stage: SpecimenStage = auto_free(SpecimenStage.new())
+	add_child(stage)
+
+	var mesh_data := _build_test_mesh_data()
+	stage.stage("mesh_specimen_crystal", mesh_data, {"shader": "crystal"})
+
+	var mesh_child: MeshInstance3D = null
+	for child in stage.get_children():
+		if child is MeshInstance3D:
+			mesh_child = child
+	assert_that(mesh_child).is_not_null()
+
+	var mat: Material = mesh_child.get_surface_override_material(0)
+	assert_that(mat).is_not_null()
+	assert_that(mat is ShaderMaterial).is_true()
+	var sm := mat as ShaderMaterial
+	assert_that(sm.shader.resource_path).is_equal("res://shaders/crystal.gdshader")
+
+
+func test_apply_display_updates_mesh_shader() -> void:
+	var stage: SpecimenStage = auto_free(SpecimenStage.new())
+	add_child(stage)
+
+	var mesh_data := _build_test_mesh_data()
+	stage.stage("mesh_specimen", mesh_data, {"shader": "brick"})
+
+	var mesh_child: MeshInstance3D = null
+	for child in stage.get_children():
+		if child is MeshInstance3D:
+			mesh_child = child
+	assert_that(mesh_child).is_not_null()
+
+	var mat1: ShaderMaterial = mesh_child.get_surface_override_material(0)
+	assert_that(mat1.shader.resource_path).is_equal("res://shaders/brick.gdshader")
+
+	stage.apply_display({"shader": "water"})
+	var mat2: ShaderMaterial = mesh_child.get_surface_override_material(0)
+	assert_that(mat2.shader.resource_path).is_equal("res://shaders/water.gdshader")

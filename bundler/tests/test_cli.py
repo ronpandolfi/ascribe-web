@@ -350,3 +350,59 @@ def test_save_refuses_to_escape_the_served_directory(tmp_path):
     finally:
         httpd.shutdown()
         httpd.server_close()
+
+
+from ascribe_bundle.envelope import read_envelope
+
+
+def test_build_mesh_stl(tmp_path: Path):
+    stl_content = """solid triangle
+  facet normal 0.0 0.0 1.0
+    outer loop
+      vertex 0.0 0.0 0.0
+      vertex 1.0 0.0 0.0
+      vertex 0.0 1.0 0.0
+    endloop
+  endfacet
+endsolid triangle
+"""
+    stl_file = tmp_path / "model.stl"
+    stl_file.write_text(stl_content, encoding="utf-8")
+
+    out = tmp_path / "out_mesh"
+    rc = main(["build", str(stl_file), "--shader", "crystal", "-o", str(out)])
+    assert rc == 0
+
+    manifest = json.loads((out / "manifest.json").read_text())
+    assert manifest["version"] == 1
+    assert manifest["specimens"][0]["type"] == "mesh"
+    assert manifest["specimens"][0]["display"]["shader"] == "crystal"
+
+    bin_data = (out / manifest["specimens"][0]["data"]).read_bytes()
+    pre, payload = read_envelope(bin_data)
+    assert pre["type"] == "mesh"
+    assert pre["vertex_count"] == 3
+    assert pre["index_count"] == 3
+    assert pre["normal_count"] == 3
+
+
+def test_build_mesh_default_shader(tmp_path: Path):
+    stl_content = """solid triangle
+  facet normal 0.0 0.0 1.0
+    outer loop
+      vertex 0.0 0.0 0.0
+      vertex 1.0 0.0 0.0
+      vertex 0.0 1.0 0.0
+    endloop
+  endfacet
+endsolid triangle
+"""
+    stl_file = tmp_path / "model.stl"
+    stl_file.write_text(stl_content, encoding="utf-8")
+
+    out = tmp_path / "out_mesh_default"
+    rc = main(["build", str(stl_file), "-o", str(out)])
+    assert rc == 0
+
+    manifest = json.loads((out / "manifest.json").read_text())
+    assert manifest["specimens"][0]["display"]["shader"] == "glass"
