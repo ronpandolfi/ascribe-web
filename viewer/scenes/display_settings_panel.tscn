@@ -6,20 +6,33 @@
 layout_mode = 3
 anchors_preset = 0
 offset_right = 240.0
-offset_bottom = 140.0
+offset_bottom = 260.0
 script = ExtResource("1_panel")
 
-[node name="VBox" type="VBoxContainer" parent="."]
+[node name="Background" type="ColorRect" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+color = Color(0.06, 0.06, 0.08, 0.88)
+
+[node name="VBox" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 12.0
+offset_top = 10.0
+offset_right = -12.0
+offset_bottom = -10.0
+grow_horizontal = 2
+grow_vertical = 2
 
 [node name="GammaLabel" type="Label" parent="VBox"]
 layout_mode = 2
-text = "Gamma"
+text = "Gamma: 1.00"
 
 [node name="Gamma" type="HSlider" parent="VBox"]
 layout_mode = 2
@@ -30,7 +43,7 @@ value = 1.0
 
 [node name="OpacityLabel" type="Label" parent="VBox"]
 layout_mode = 2
-text = "Opacity"
+text = "Opacity: 1.00"
 
 [node name="Opacity" type="HSlider" parent="VBox"]
 layout_mode = 2
@@ -40,14 +53,173 @@ value = 1.0
 
 [node name="QualityLabel" type="Label" parent="VBox"]
 layout_mode = 2
-text = "Quality"
+text = "Quality: 128 steps"
 
 [node name="Quality" type="HSlider" parent="VBox"]
 layout_mode = 2
-min_value = 32.0
-max_value = 512.0
+min_value = 64.0
+max_value = 2048.0
 step = 1.0
 value = 128.0
+
+[node name="AdvancedToggle" type="Button" parent="VBox"]
+layout_mode = 2
+text = "Advanced Settings [+]"
+
+[node name="AdvancedScroll" type="ScrollContainer" parent="VBox"]
+visible = false
+custom_minimum_size = Vector2(0, 260)
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="AdvancedVBox" type="VBoxContainer" parent="VBox/AdvancedScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="RaymarchHeader" type="Label" parent="VBox/AdvancedScroll/AdvancedVBox"]
+layout_mode = 2
+text = "-- Raymarching --"
+horizontal_alignment = 1
+
+[node name="MaxStepsLabel" type="Label" parent="VBox/AdvancedScroll/AdvancedVBox"]
+layout_mode = 2
+text = "Raymarch Steps: 128"
+
+[node name="MaxSteps" type="HSlider" parent="VBox/AdvancedScroll/AdvancedVBox"]
+layout_mode = 2
+min_value = 16.0
+max_value = 2048.0
+step = 8.0
+value = 128.0
+
+[node name="StepSizeLabel" type="Label" parent="VBox/AdvancedScroll/AdvancedVBox"]
+layout_mode = 2
+text = "Step Size: 0.0100"
+
+[node name="StepSize" type="HSlider" parent="VBox/AdvancedScroll/AdvancedVBox"]
+layout_mode = 2
+min_value = 0.0005
+max_value = 0.05
+step = 0.00001
+value = 0.00125
+
+[node name="AutoStepSize" type="CheckBox" parent="VBox/AdvancedScroll/AdvancedVBox"]
+layout_mode = 2
+button_pressed = false
+text = "Auto Step Size (Linked)"
+
+[node name="AdaptiveSteps" type="CheckBox" parent="VBox/AdvancedScroll/AdvancedVBox"]
+layout_mode = 2
+button_pressed = true
+text = "XR Distance-Adaptive Steps"
+
+[node name="ShadingEnabled" type="CheckBox" parent="VBox/AdvancedScroll/AdvancedVBox"]
+layout_mode = 2
+text = "Surface Shading & Normals"
+
+[node name="EarlyCutoffLabel" type="Label" parent="VBox/AdvancedScroll/AdvancedVBox"]
+layout_mode = 2
+text = "Early Ray Cutoff: 0.995"
+
+[node name="EarlyCutoff" type="HSlider" parent="VBox/AdvancedScroll/AdvancedVBox"]
+layout_mode = 2
+min_value = 0.8
+max_value = 1.0
+step = 0.005
+value = 0.995
+
+[node name="ESSHeader" type="Label" parent="VBox/AdvancedScroll/AdvancedVBox"]
+layout_mode = 2
+text = "-- Empty-Space Skipping --"
+horizontal_alignment = 1
+
+[node name="ESSEnabled" type="CheckBox" parent="VBox/AdvancedScroll/AdvancedVBox"]
+layout_mode = 2
+button_pressed = true
+text = "Empty-Space Skipping (ESS)"
+
+[node name="ESSStrideLabel" type="Label" parent="VBox/AdvancedScroll/AdvancedVBox"]
+layout_mode = 2
+text = "ESS Leap Stride: 2.0x"
+
+[node name="ESSStride" type="HSlider" parent="VBox/AdvancedScroll/AdvancedVBox"]
+layout_mode = 2
+min_value = 1.0
+max_value = 4.0
+step = 0.5
+value = 2.0
+
+[node name="ESSCutoffLabel" type="Label" parent="VBox/AdvancedScroll/AdvancedVBox"]
+layout_mode = 2
+text = "ESS Alpha Cutoff: 0.0020"
+
+[node name="ESSCutoff" type="HSlider" parent="VBox/AdvancedScroll/AdvancedVBox"]
+layout_mode = 2
+max_value = 0.01
+step = 0.0005
+value = 0.002
+
+[node name="SamplingHeader" type="Label" parent="VBox/AdvancedScroll/AdvancedVBox"]
+layout_mode = 2
+text = "-- Sampling & Dither --"
+horizontal_alignment = 1
+
+[node name="PreintegratedLUT" type="CheckBox" parent="VBox/AdvancedScroll/AdvancedVBox"]
+layout_mode = 2
+button_pressed = true
+text = "Pre-integrated 2D LUT"
+
+[node name="LUTSubstepsLabel" type="Label" parent="VBox/AdvancedScroll/AdvancedVBox"]
+layout_mode = 2
+text = "LUT Sub-steps: 1"
+
+[node name="LUTSubsteps" type="HSlider" parent="VBox/AdvancedScroll/AdvancedVBox"]
+layout_mode = 2
+min_value = 1.0
+max_value = 32.0
+step = 1.0
+value = 1.0
+
+[node name="JitterLabel" type="Label" parent="VBox/AdvancedScroll/AdvancedVBox"]
+layout_mode = 2
+text = "Ray Start Jitter: 1.0"
+
+[node name="Jitter" type="HSlider" parent="VBox/AdvancedScroll/AdvancedVBox"]
+layout_mode = 2
+max_value = 1.0
+step = 0.1
+value = 1.0
+
+[node name="LateralDitherLabel" type="Label" parent="VBox/AdvancedScroll/AdvancedVBox"]
+layout_mode = 2
+text = "Lateral Dither: 0.0"
+
+[node name="LateralDither" type="HSlider" parent="VBox/AdvancedScroll/AdvancedVBox"]
+layout_mode = 2
+max_value = 8.0
+step = 0.5
+
+[node name="ViewportHeader" type="Label" parent="VBox/AdvancedScroll/AdvancedVBox"]
+layout_mode = 2
+text = "-- Flat Viewport --"
+horizontal_alignment = 1
+
+[node name="Scale3DLabel" type="Label" parent="VBox/AdvancedScroll/AdvancedVBox"]
+layout_mode = 2
+text = "Flat 3D Scale: 1.00"
+
+[node name="Scale3D" type="HSlider" parent="VBox/AdvancedScroll/AdvancedVBox"]
+layout_mode = 2
+min_value = 0.25
+max_value = 1.0
+step = 0.05
+value = 1.0
+
+[node name="AdaptiveResFlat" type="CheckBox" parent="VBox/AdvancedScroll/AdvancedVBox"]
+layout_mode = 2
+button_pressed = true
+text = "Flat Distance-Adaptive Scale"
 
 [node name="ExitVR" type="Button" parent="VBox"]
 layout_mode = 2

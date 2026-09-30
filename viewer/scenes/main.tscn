@@ -18,7 +18,7 @@ ambient_light_color = Color(1, 1, 1, 1)
 ambient_light_energy = 0.3
 
 [sub_resource type="QuadMesh" id="QuadMesh_panel"]
-size = Vector2(0.4, 0.2333333)
+size = Vector2(0.4, 0.4666667)
 
 [sub_resource type="SphereMesh" id="SphereMesh_dot"]
 radius = 0.006
@@ -72,13 +72,20 @@ tracker = "left_hand"
 tracker = "right_hand"
 
 [node name="PanelViewport" type="SubViewport" parent="XROrigin3D"]
-size = Vector2i(480, 280)
+size = Vector2i(480, 560)
 render_target_update_mode = 4
 
 [node name="DisplaySettingsPanel" parent="XROrigin3D/PanelViewport" instance=ExtResource("7_panel")]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_right = 0.0
+offset_bottom = 0.0
+grow_horizontal = 2
+grow_vertical = 2
 
 [node name="PanelQuad" type="MeshInstance3D" parent="XROrigin3D"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.45, 1.5, -0.7)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.45, 1.4, -0.7)
 mesh = SubResource("QuadMesh_panel")
 surface_material_override/0 = SubResource("StandardMaterial3D_panel")
 
@@ -181,7 +188,7 @@ anchor_right = 1.0
 offset_left = -580.0
 offset_top = 20.0
 offset_right = -340.0
-offset_bottom = 160.0
+offset_bottom = 280.0
 grow_horizontal = 0
 
 [node name="StoryPanel" parent="CanvasLayer" instance=ExtResource("8_story")]

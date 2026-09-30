@@ -4,15 +4,14 @@ class_name Quality
 extends RefCounted
 
 # Sampling density is the dominant quality control: too few steps and a ray skips through
-# structure it should have integrated. Judged in the viewer, anything under ~512 steps is not
-# worth offering -- so that is the floor rather than a setting a user can wander into, and the
-# range extends upward instead.
-const MIN_USABLE_STEPS := 512
+# structure it should have integrated. The floor is 64 steps so that constrained mobile/VR
+# devices can shed work and hold high framerates (72-90 Hz), while the range extends upward to 2048.
+const MIN_USABLE_STEPS := 64
 const MAX_STEPS := 2048
 
 const DESKTOP_STEPS := 1024
 const MOBILE_STEPS := 512
-const XR_STEPS := 768
+const XR_STEPS := 128
 
 ## Anchor points (max_steps, step_size) that `step_size_for` interpolates between. This is the
 ## single source of truth for the steps -> step_size mapping: both `pick_tier` (desktop/mobile/XR
@@ -27,6 +26,9 @@ const XR_STEPS := 768
 ## expressed as `[DESKTOP_STEPS, ...]`, raising a tier onto an existing anchor's step count
 ## silently produced a duplicate and returned the wrong step size.
 const _STEP_SIZE_POINTS := [
+	[64.0, 0.020],
+	[128.0, 0.010],
+	[256.0, 0.005],
 	[512.0, 0.0025],
 	[768.0, 0.00170],
 	[1024.0, 0.00125],
@@ -50,12 +52,39 @@ static func step_size_for(steps: int) -> float:
 	return pts[pts.size() - 1][1]
 
 
+## Returns the LUT sub-step integration budget for a given step count.
+## Higher step counts have the GPU headroom for deep sub-stepping; lower counts
+## shed inner iterations so lowering the quality slider genuinely recovers framerate.
+static func lut_substeps_for(steps: int) -> int:
+	if steps <= 128:
+		return 1
+	elif steps <= 256:
+		return 8
+	elif steps <= 512:
+		return 32
+	elif steps <= 768:
+		return 64
+	else:
+		return 192
+
+
 ## `features` mirrors `OS.has_feature(...)` checks the caller has already done (e.g.
 ## `["web_android"]` when `OS.has_feature("web_android")` is true). XR wins over mobile.
 static func pick_tier(features: PackedStringArray, xr_active: bool) -> Dictionary:
 	var steps := DESKTOP_STEPS
+	var jitter := 4.0
 	if xr_active:
 		steps = XR_STEPS
-	elif features.has("web_android") or features.has("web_ios"):
+		jitter = 0.0
+	elif features.has("mobile") or features.has("web_android") or features.has("web_ios"):
 		steps = MOBILE_STEPS
-	return {"max_steps": steps, "step_size": step_size_for(steps)}
+	# XR and mobile browsers run on unified mobile memory where dynamic inner loops cause
+	# warp divergence and severe frame drops. Pin fallback lut_substeps to 1 on XR and mobile.
+	var is_constrained := xr_active or features.has("mobile") or features.has("web_android") or features.has("web_ios")
+	var lut_sub := 1 if is_constrained else lut_substeps_for(steps)
+	return {
+		"max_steps": steps,
+		"step_size": step_size_for(steps),
+		"lut_substeps": lut_sub,
+		"lateral_jitter": jitter,
+	}

@@ -55,6 +55,13 @@ func _current_mesh_instance() -> MeshInstance3D:
 	return null
 
 
+func get_box_extents() -> Vector3:
+	var mesh_instance := _current_mesh_instance()
+	if mesh_instance != null and mesh_instance.mesh is BoxMesh:
+		return (mesh_instance.mesh as BoxMesh).size / 2.0
+	return Vector3.ONE * 0.5
+
+
 func _stage_volume(vol: WebVolumetricData, display: Dictionary) -> void:
 	var box := BoxMesh.new()
 	var box_size := _normalized_box_size(vol.get_dimensions(), vol.get_spacing())
@@ -66,6 +73,11 @@ func _stage_volume(vol: WebVolumetricData, display: Dictionary) -> void:
 	# Half-extents of the staged box; keeps the raymarch's ray-box intersection and texture
 	# coordinate normalization matched to the actual (possibly non-cubic) box, not a unit cube.
 	mat.set_shader_parameter("box_extents", box_size / 2.0)
+	var default_grad := Gradient.new()
+	default_grad.offsets = PackedFloat32Array([0.0, 1.0])
+	default_grad.colors = [Color(0, 0, 0, 0), Color(1, 1, 1, 1)]
+	mat.set_shader_parameter("preintegrated_lut", _preintegrated_from_gradient(default_grad))
+	mat.set_shader_parameter("use_preintegrated_lut", true)
 	_apply_display_to_material(mat, display)
 
 	var mesh_instance := MeshInstance3D.new()
@@ -115,7 +127,10 @@ func _apply_display_to_material(mat: ShaderMaterial, display: Dictionary) -> voi
 	if display.has("opacity"):
 		mat.set_shader_parameter("opacity", float(display["opacity"]))
 	if display.has("gradient"):
-		mat.set_shader_parameter("gradient", _gradient_from_stops(display["gradient"]))
+		var grad_tex := _gradient_from_stops(display["gradient"])
+		mat.set_shader_parameter("gradient", grad_tex)
+		mat.set_shader_parameter("preintegrated_lut", _preintegrated_from_gradient(grad_tex.gradient))
+		mat.set_shader_parameter("use_preintegrated_lut", true)
 	if display.has("max_steps"):
 		mat.set_shader_parameter("max_steps", int(display["max_steps"]))
 	if display.has("step_size"):
@@ -130,6 +145,18 @@ func _apply_display_to_material(mat: ShaderMaterial, display: Dictionary) -> voi
 	# cannot hold framerate.
 	if display.has("lut_substeps"):
 		mat.set_shader_parameter("lut_substeps", int(display["lut_substeps"]))
+	if display.has("shading_enabled"):
+		mat.set_shader_parameter("shading_enabled", bool(display["shading_enabled"]))
+	if display.has("use_preintegrated_lut"):
+		mat.set_shader_parameter("use_preintegrated_lut", bool(display["use_preintegrated_lut"]))
+	if display.has("saturation_cutoff"):
+		mat.set_shader_parameter("saturation_cutoff", float(display["saturation_cutoff"]))
+	if display.has("jitter_amount"):
+		mat.set_shader_parameter("jitter_amount", float(display["jitter_amount"]))
+	if display.has("ess_cutoff"):
+		mat.set_shader_parameter("ess_cutoff", float(display["ess_cutoff"]))
+	if display.has("ess_stride"):
+		mat.set_shader_parameter("ess_stride", float(display["ess_stride"]))
 
 
 ## Builds a GradientTexture1D from a list of `[offset: float, hex_color: String]` stops (the
@@ -202,3 +229,69 @@ func _resolve_mesh_material(shader_name: String) -> Material:
 
 	push_error("SpecimenStage: failed to load default mesh shader (glass)")
 	return null
+
+
+## Generates a 2D pre-integrated transfer function LUT (Engel et al. 2001) using O(N)
+## prefix sums. Eliminates the runtime numerical sub-stepping loop in the fragment shader.
+func _preintegrated_from_gradient(gradient: Gradient, n: int = 128) -> ImageTexture:
+	var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
+	var data := PackedByteArray()
+	data.resize(n * n * 4)
+
+	var cum_a := PackedFloat32Array()
+	var cum_r := PackedFloat32Array()
+	var cum_g := PackedFloat32Array()
+	var cum_b := PackedFloat32Array()
+	cum_a.resize(n)
+	cum_r.resize(n)
+	cum_g.resize(n)
+	cum_b.resize(n)
+
+	var cur_a := 0.0
+	var cur_r := 0.0
+	var cur_g := 0.0
+	var cur_b := 0.0
+	var inv_n := 1.0 / float(n)
+
+	for i in range(n):
+		var s := float(i) / float(n - 1)
+		var c := gradient.sample(s)
+		cur_a += c.a * inv_n
+		cur_r += c.r * c.a * inv_n
+		cur_g += c.g * c.a * inv_n
+		cur_b += c.b * c.a * inv_n
+		cum_a[i] = cur_a
+		cum_r[i] = cur_r
+		cum_g[i] = cur_g
+		cum_b[i] = cur_b
+
+	var ptr := 0
+	for y in range(n):
+		var sf := float(y) / float(n - 1)
+		for x in range(n):
+			if x == y:
+				var c := gradient.sample(sf)
+				data[ptr + 0] = int(clampf(c.r * 255.0, 0.0, 255.0))
+				data[ptr + 1] = int(clampf(c.g * 255.0, 0.0, 255.0))
+				data[ptr + 2] = int(clampf(c.b * 255.0, 0.0, 255.0))
+				data[ptr + 3] = int(clampf(c.a * 255.0, 0.0, 255.0))
+			else:
+				var lo := mini(x, y)
+				var hi := maxi(x, y)
+				var d := float(hi - lo) * inv_n
+				var delta_a := (cum_a[hi] - cum_a[lo]) / d
+				var delta_r := (cum_r[hi] - cum_r[lo]) / d
+				var delta_g := (cum_g[hi] - cum_g[lo]) / d
+				var delta_b := (cum_b[hi] - cum_b[lo]) / d
+				var alpha := 1.0 - exp(-delta_a)
+				var cr := delta_r / maxf(delta_a, 0.0001) if delta_a > 0.0 else 0.0
+				var cg := delta_g / maxf(delta_a, 0.0001) if delta_a > 0.0 else 0.0
+				var cb := delta_b / maxf(delta_a, 0.0001) if delta_a > 0.0 else 0.0
+				data[ptr + 0] = int(clampf(cr * 255.0, 0.0, 255.0))
+				data[ptr + 1] = int(clampf(cg * 255.0, 0.0, 255.0))
+				data[ptr + 2] = int(clampf(cb * 255.0, 0.0, 255.0))
+				data[ptr + 3] = int(clampf(alpha * 255.0, 0.0, 255.0))
+			ptr += 4
+
+	img.set_data(n, n, false, Image.FORMAT_RGBA8, data)
+	return ImageTexture.create_from_image(img)

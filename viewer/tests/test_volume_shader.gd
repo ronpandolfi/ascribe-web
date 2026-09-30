@@ -31,7 +31,14 @@ func test_ray_start_is_jittered() -> void:
 	var src := _source()
 	assert_str(src).contains("float interleaved_gradient_noise(")
 	assert_str(src).contains("float jitter = interleaved_gradient_noise(FRAGCOORD.xy)")
-	assert_str(src).contains("(float(i) + jitter) * march_step")
+	assert_str(src).contains("t_near + jitter * march_step")
+
+
+func test_empty_space_skipping_uses_mapped_opacity() -> void:
+	var src := _source()
+	assert_str(src).contains("float mapped_alpha = lut_sample.a * opacity;")
+	assert_str(src).contains("if (ess_stride > 1.0 && mapped_alpha < ess_cutoff)")
+	assert_str(src).contains("t += march_step * ess_stride;")
 
 
 # Compositing must weight each sample by the remaining transmittance. Accumulating raw opacity
@@ -73,7 +80,7 @@ func test_march_step_widens_to_cover_the_interval() -> void:
 	var src := _source()
 	assert_str(src).contains("float march_step = max(step_size, span / float(max_steps));")
 	assert_str(src).contains("float step_ratio = march_step / REFERENCE_STEP;")
-	assert_str(src).contains("(float(i) + jitter) * march_step;")
+	assert_str(src).contains("t_near + jitter * march_step")
 
 
 # The per-eye origin must come from a uniform indexed by VIEW_INDEX. EYE_OFFSET cannot be named
@@ -107,6 +114,13 @@ func test_diagnostic_uniforms_default_off() -> void:
 # Scalar projection modes: mode 0 composites (standard volume rendering), 1 is maximum
 # intensity projection and 2 is mean density -- both reduce the ray to one number before
 # touching the transfer function, so neither can produce compositing artifacts.
+func test_preintegrated_lut_uniforms_exist_and_default_enabled() -> void:
+	var src := _source()
+	assert_str(src).contains("uniform sampler2D preintegrated_lut")
+	assert_str(src).contains("uniform bool use_preintegrated_lut = true;")
+	assert_str(src).contains("texture(preintegrated_lut, vec2(lut_from, lut_to))")
+
+
 func test_projection_modes_exist_and_default_to_compositing() -> void:
 	var src := _source()
 	assert_str(src).contains("uniform int projection_mode = 0;")

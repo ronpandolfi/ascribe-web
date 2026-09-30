@@ -6,6 +6,7 @@ import functools
 import json
 import shutil
 import sys
+import ssl
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -221,7 +222,8 @@ class _EditingHandler(SimpleHTTPRequestHandler):
 
 
 def make_server(directory: Path, port: int = 8060,
-                allow_save: bool = False) -> ThreadingHTTPServer:
+                allow_save: bool = False, host: str = "0.0.0.0",
+                certfile: str | None = None, keyfile: str | None = None) -> ThreadingHTTPServer:
     """Builds (but does not start) a no-cache static server rooted at `directory`.
 
     With `allow_save`, a POST to `<bundle>/manifest.json` writes that manifest back to disk --
@@ -231,8 +233,12 @@ def make_server(directory: Path, port: int = 8060,
     Pass `port=0` to let the OS pick a free port; read it back from `server_address`.
     """
     handler = functools.partial(_EditingHandler, directory=str(directory))
-    httpd = ThreadingHTTPServer(("127.0.0.1", port), handler)
+    httpd = ThreadingHTTPServer((host, port), handler)
     httpd.allow_save = allow_save
+    if certfile and keyfile:
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(certfile=certfile, keyfile=keyfile)
+        httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)
     return httpd
 
 
@@ -242,13 +248,26 @@ def serve(args) -> int:
         print(f"error: {root} is not a directory", file=sys.stderr)
         return 1
 
-    httpd = make_server(root, args.port, allow_save=args.edit)
+    certfile = args.cert
+    keyfile = args.key
+    if args.ssl and not certfile:
+        default_cert = Path("certs/cert.pem")
+        default_key = Path("certs/key.pem")
+        if default_cert.is_file() and default_key.is_file():
+            certfile = str(default_cert)
+            keyfile = str(default_key)
+        else:
+            print("error: --ssl requested but certs/cert.pem and certs/key.pem not found. Provide --cert and --key.", file=sys.stderr)
+            return 1
+
+    httpd = make_server(root, args.port, allow_save=args.edit, host=args.host, certfile=certfile, keyfile=keyfile)
     port = httpd.server_address[1]
+    proto = "https" if certfile else "http"
     mode = "no-store, saving enabled" if args.edit else "no-store"
-    print(f"serving {root} at http://localhost:{port}/ ({mode}; Ctrl+C to stop)")
+    print(f"serving {root} at {proto}://localhost:{port}/ ({mode}; Ctrl+C to stop)")
     if args.edit:
         print("  edit mode: append &edit=1 to the viewer URL to save view and display settings")
-    print(f"  e.g. http://localhost:{port}/index.html?bundle=<bundle-dir>")
+    print(f"  e.g. {proto}://localhost:{port}/index.html?bundle=<bundle-dir>")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
@@ -294,6 +313,10 @@ def main(argv=None) -> int:
     s_ = sub.add_parser("serve", help="serve a directory over HTTP with caching disabled")
     s_.add_argument("directory", help="directory to serve (usually build/web)")
     s_.add_argument("--port", type=int, default=8060)
+    s_.add_argument("--host", default="0.0.0.0", help="host to bind to (default 0.0.0.0)")
+    s_.add_argument("--ssl", action="store_true", help="serve over HTTPS (uses certs/cert.pem and certs/key.pem or --cert/--key)")
+    s_.add_argument("--cert", default=None, help="path to SSL certificate file")
+    s_.add_argument("--key", default=None, help="path to SSL private key file")
     s_.add_argument("--edit", action="store_true",
                     help="allow the viewer to save view and display settings back into a "
                          "bundle's manifest.json (local authoring; off by default)")

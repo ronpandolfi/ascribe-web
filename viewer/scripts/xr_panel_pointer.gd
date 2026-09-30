@@ -1,6 +1,7 @@
 ## In-VR pointer for the display settings panel: casts a ray from the right controller, shows a
 ## laser dot where it hits the panel quad, forwards hover as mouse motion into the panel's
-## SubViewport, and synthesizes a click on a rising-edge trigger press so sliders can be dragged.
+## SubViewport, and synthesizes continuous mouse drag / click events with the trigger so sliders
+## can be dragged fluidly.
 ## The panel is hidden outside XR; in XR it is visible by default and toggled by the left
 ## controller's "by" button when that input is available (headsets without it just leave it on).
 extends Node3D
@@ -15,6 +16,7 @@ const TRIGGER_THRESHOLD := 0.7
 
 var _prev_by_pressed: bool = false
 var _prev_trigger_pressed: bool = false
+var _last_uv := Vector2(0.5, 0.5)
 
 
 func _physics_process(_delta: float) -> void:
@@ -32,14 +34,18 @@ func _physics_process(_delta: float) -> void:
 	if not panel_quad.visible:
 		if laser_dot:
 			laser_dot.visible = false
-		_prev_trigger_pressed = false
+		if _prev_trigger_pressed:
+			_push_button(_last_uv, false)
+			_prev_trigger_pressed = false
 		return
 
 	var hit := _intersect_quad(right_controller.global_transform)
 	if hit.is_empty():
 		if laser_dot:
 			laser_dot.visible = false
-		_prev_trigger_pressed = false
+		if _prev_trigger_pressed:
+			_push_button(_last_uv, false)
+			_prev_trigger_pressed = false
 		return
 
 	if laser_dot:
@@ -47,11 +53,18 @@ func _physics_process(_delta: float) -> void:
 		laser_dot.global_position = hit["point"]
 
 	var uv: Vector2 = hit["uv"]
-	_push_hover(uv)
+	_last_uv = uv
 
 	var trigger_pressed: bool = right_controller.get_float("trigger") > TRIGGER_THRESHOLD
 	if trigger_pressed and not _prev_trigger_pressed:
-		_push_click(uv)
+		_push_button(uv, true)
+	elif trigger_pressed and _prev_trigger_pressed:
+		_push_motion(uv, true)
+	elif not trigger_pressed and _prev_trigger_pressed:
+		_push_button(uv, false)
+	else:
+		_push_motion(uv, false)
+
 	_prev_trigger_pressed = trigger_pressed
 
 
@@ -96,26 +109,26 @@ func _intersect_quad(ray_transform: Transform3D) -> Dictionary:
 	return {"point": panel_quad.to_global(local_hit), "uv": uv}
 
 
-func _push_hover(uv: Vector2) -> void:
+func _push_motion(uv: Vector2, held: bool) -> void:
 	var pos := _uv_to_viewport_pos(uv)
 	var event := InputEventMouseMotion.new()
 	event.position = pos
 	event.global_position = pos
+	if held:
+		event.button_mask = MOUSE_BUTTON_MASK_LEFT
 	panel_viewport.push_input(event)
 
 
-func _push_click(uv: Vector2) -> void:
+func _push_button(uv: Vector2, pressed: bool) -> void:
 	var pos := _uv_to_viewport_pos(uv)
-	var down := InputEventMouseButton.new()
-	down.position = pos
-	down.global_position = pos
-	down.button_index = MOUSE_BUTTON_LEFT
-	down.pressed = true
-	panel_viewport.push_input(down)
-
-	var up := down.duplicate()
-	up.pressed = false
-	panel_viewport.push_input(up)
+	var btn := InputEventMouseButton.new()
+	btn.position = pos
+	btn.global_position = pos
+	btn.button_index = MOUSE_BUTTON_LEFT
+	btn.pressed = pressed
+	if pressed:
+		btn.button_mask = MOUSE_BUTTON_MASK_LEFT
+	panel_viewport.push_input(btn)
 
 
 func _uv_to_viewport_pos(uv: Vector2) -> Vector2:

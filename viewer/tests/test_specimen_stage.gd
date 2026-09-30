@@ -84,6 +84,29 @@ func test_gradient_from_stops() -> void:
 	assert_that(tex.gradient.get_point_count()).is_equal(2)
 
 
+func test_preintegrated_lut_is_generated_and_reaches_shader() -> void:
+	var stage: SpecimenStage = auto_free(SpecimenStage.new())
+	add_child(stage)
+
+	stage.stage("specimen_0", _load_fixture_volume(), {
+		"gradient": [[0.0, "#00000000"], [1.0, "#ffffffff"]]
+	})
+
+	var mesh_child: MeshInstance3D = null
+	for child in stage.get_children():
+		if child is MeshInstance3D:
+			mesh_child = child
+	assert_that(mesh_child).is_not_null()
+
+	var mat: ShaderMaterial = mesh_child.get_surface_override_material(0)
+	assert_that(mat).is_not_null()
+	var pre_tex = mat.get_shader_parameter("preintegrated_lut")
+	assert_that(pre_tex).is_not_null()
+	assert_bool(mat.get_shader_parameter("use_preintegrated_lut")).is_true()
+	assert_that(pre_tex.get_width()).is_equal(128)
+	assert_that(pre_tex.get_height()).is_equal(128)
+
+
 # Regression: the shader's per-eye origin came from EYE_OFFSET, which cannot be named under
 # Godot 4.6's Compatibility backend without breaking the mono variant. Dropping it compiled but
 # left both eyes marching from the same origin -- no stereo at all in a headset. The offsets now
@@ -232,3 +255,28 @@ func test_apply_display_updates_mesh_shader() -> void:
 	stage.apply_display({"shader": "water"})
 	var mat2: ShaderMaterial = mesh_child.get_surface_override_material(0)
 	assert_that(mat2.shader.resource_path).is_equal("res://shaders/water.gdshader")
+
+func test_advanced_display_parameters_reach_the_shader() -> void:
+	var stage: SpecimenStage = auto_free(SpecimenStage.new())
+	add_child(stage)
+	stage.stage("specimen_0", _load_fixture_volume(), {
+		"shading_enabled": true,
+		"use_preintegrated_lut": false,
+		"saturation_cutoff": 0.95,
+		"jitter_amount": 0.5,
+		"ess_cutoff": 0.005,
+		"ess_stride": 3.0,
+	})
+
+	var mesh_child: MeshInstance3D = null
+	for child in stage.get_children():
+		if child is MeshInstance3D:
+			mesh_child = child
+	var mat: ShaderMaterial = mesh_child.get_surface_override_material(0)
+	assert_that(bool(mat.get_shader_parameter("shading_enabled"))).is_true()
+	assert_that(bool(mat.get_shader_parameter("use_preintegrated_lut"))).is_false()
+	assert_float(mat.get_shader_parameter("saturation_cutoff")).is_equal_approx(0.95, 0.001)
+	assert_float(mat.get_shader_parameter("jitter_amount")).is_equal_approx(0.5, 0.001)
+	assert_float(mat.get_shader_parameter("ess_cutoff")).is_equal_approx(0.005, 0.0001)
+	assert_float(mat.get_shader_parameter("ess_stride")).is_equal_approx(3.0, 0.001)
+

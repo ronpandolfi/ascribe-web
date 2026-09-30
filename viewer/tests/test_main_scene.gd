@@ -162,3 +162,80 @@ func test_fullscreen_button_layout_adapts_to_story_panel() -> void:
 	main._update_fullscreen_button_layout()
 	assert_float(btn.offset_right).is_equal_approx(-336.0, 0.1)
 
+func test_xr_session_toggles_scaling_and_cameras() -> void:
+	var main := await _make_main()
+	var vp := main.get_viewport()
+	var cam_desktop: Camera3D = main.get_node("Camera3D")
+	var cam_xr: XRCamera3D = main.get_node("XROrigin3D/XRCamera3D")
+	var panel_vp: SubViewport = main.get_node("XROrigin3D/PanelViewport")
+	var story_vp: SubViewport = main.get_node("XROrigin3D/StoryViewport")
+
+	# Initial desktop state (adaptive scaling starts near 1.0)
+	assert_float(vp.scaling_3d_scale).is_greater(0.8)
+	assert_bool(cam_desktop.current).is_true()
+	assert_bool(cam_xr.current).is_false()
+	assert_that(panel_vp.render_target_update_mode).is_equal(SubViewport.UPDATE_DISABLED)
+	assert_that(story_vp.render_target_update_mode).is_equal(SubViewport.UPDATE_DISABLED)
+
+	# Enter XR session
+	main._on_session_started()
+	assert_float(vp.scaling_3d_scale).is_equal_approx(main.XR_SCALING_3D_SCALE, 0.001)
+	assert_bool(cam_desktop.current).is_false()
+	assert_bool(cam_xr.current).is_true()
+	assert_that(panel_vp.render_target_update_mode).is_equal(SubViewport.UPDATE_ALWAYS)
+	assert_that(story_vp.render_target_update_mode).is_equal(SubViewport.UPDATE_ALWAYS)
+
+	# End XR session
+	main._on_session_ended()
+	assert_float(vp.scaling_3d_scale).is_greater(0.8)
+	assert_bool(cam_desktop.current).is_true()
+	assert_bool(cam_xr.current).is_false()
+	assert_that(panel_vp.render_target_update_mode).is_equal(SubViewport.UPDATE_DISABLED)
+	assert_that(story_vp.render_target_update_mode).is_equal(SubViewport.UPDATE_DISABLED)
+
+func test_adaptive_resolution_scales_with_camera_distance() -> void:
+	var main := await _make_main()
+	var vp := main.get_viewport()
+	var cam: Camera3D = main.get_node("Camera3D")
+	var stage: Node3D = main.get_node("SpecimenStage")
+
+	# Put camera far away (e.g. stage pos + 3.0m back)
+	cam.global_position = stage.global_position + Vector3(0, 0, 3.0)
+	for i in range(5):
+		main._update_adaptive_resolution(0.5)
+	var far_scale := vp.scaling_3d_scale
+	assert_float(far_scale).is_greater(0.9)
+
+	# Put camera right inside the volume at the stage position
+	cam.global_position = stage.global_position
+	for i in range(15):
+		main._update_adaptive_resolution(0.5)
+	var inside_scale := vp.scaling_3d_scale
+	assert_float(inside_scale).is_less(far_scale)
+	assert_float(inside_scale).is_less_equal(0.55)
+
+func test_adaptive_step_budget_in_xr() -> void:
+	var main := await _make_main()
+	var vp := main.get_viewport()
+	var stage: Node3D = main.get_node("SpecimenStage")
+	var xr_cam: XRCamera3D = main.get_node("XROrigin3D/XRCamera3D")
+
+	main._on_session_started()
+	vp.use_xr = true
+	assert_float(vp.scaling_3d_scale).is_equal_approx(1.0, 0.001)
+
+	# XR camera far away (>= 1.5m)
+	xr_cam.global_position = stage.global_position + Vector3(0, 0, 3.0)
+	main._update_adaptive_resolution(0.5)
+	assert_that(main._current_xr_adaptive_steps).is_equal(Quality.XR_STEPS)
+	assert_float(vp.scaling_3d_scale).is_equal_approx(1.0, 0.001)
+
+	# XR camera inside the volume
+	xr_cam.global_position = stage.global_position
+	main._update_adaptive_resolution(0.5)
+	assert_that(main._current_xr_adaptive_steps).is_less(Quality.XR_STEPS)
+	assert_that(main._current_xr_adaptive_steps).is_greater_equal(48)
+	assert_float(vp.scaling_3d_scale).is_equal_approx(1.0, 0.001)
+
+	main._on_session_ended()
+	vp.use_xr = false

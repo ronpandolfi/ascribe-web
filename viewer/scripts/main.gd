@@ -28,6 +28,14 @@ var _was_fullscreen: bool = false
 
 const DEFAULT_BUNDLE := "res://tests/fixtures/tiny_bundle"
 
+## 3D resolution scale in XR. Must remain 1.0 because Godot's WebGL Compatibility (GLES3)
+## renderer does not support multiview blit when scaling_3d_scale < 1.0 (it only upscales to the
+## right eye, breaking stereoscopic rendering). Instead, XR performance scaling is handled via
+## distance-adaptive raymarch step budgeting and empty-space skipping.
+const XR_SCALING_3D_SCALE := 1.0
+
+var _current_xr_adaptive_steps: int = -1
+
 
 func _ready() -> void:
 	xr_interface = XRServer.find_interface("WebXR")
@@ -56,6 +64,8 @@ func _ready() -> void:
 	_bundle_base_url = _resolve_bundle_url()
 	_loader.load_bundle(_bundle_base_url)
 
+	$XROrigin3D/PanelViewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	$XROrigin3D/StoryViewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	_wire_panel_textures()
 	$CanvasLayer/AxesGadget.camera = $Camera3D
 	_frame_specimen_for_desktop()
@@ -225,14 +235,26 @@ func _apply_quality_tier() -> void:
 		features.append("web_android")
 	if OS.has_feature("web_ios"):
 		features.append("web_ios")
+	if OS.has_feature("web"):
+		var is_quest_or_mobile: bool = bool(JavaScriptBridge.eval(
+			"/Quest|OculusBrowser|Pico|Vive|Android|Mobile|iPhone|iPad/i.test(navigator.userAgent)"
+		))
+		if is_quest_or_mobile:
+			features.append("mobile")
 	var xr_active := get_viewport().use_xr
 	var tier := Quality.pick_tier(features, xr_active)
+	var is_constrained := xr_active or features.has("mobile") or features.has("web_android") or features.has("web_ios")
 	if not _authored_quality.is_empty():
 		# Honour the bundle's own setting, capped by what this device can afford.
 		var steps: int = int(_authored_quality["max_steps"])
-		if xr_active:
+		if is_constrained:
 			steps = mini(steps, int(tier["max_steps"]))
-		tier = {"max_steps": steps, "step_size": Quality.step_size_for(steps)}
+		tier["max_steps"] = steps
+		if _authored_quality.has("step_size"):
+			tier["step_size"] = float(_authored_quality["step_size"])
+		else:
+			tier["step_size"] = Quality.step_size_for(steps)
+		tier["lut_substeps"] = 1 if is_constrained else Quality.lut_substeps_for(steps)
 	$SpecimenStage.apply_display(tier)
 	$CanvasLayer/DisplaySettingsPanel.set_display(tier)
 	$XROrigin3D/PanelViewport/DisplaySettingsPanel.set_display(tier)
@@ -242,8 +264,9 @@ func _apply_quality_tier() -> void:
 ## raymarch starts from the correct origin for each eye. The offsets are re-read every frame
 ## rather than cached: IPD can change between sessions, and some runtimes only report a
 ## meaningful value once tracking has settled.
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	_refresh_save_status()
+	_update_adaptive_resolution(delta)
 	if not OS.has_feature("web"):
 		var fs := _is_fullscreen()
 		if fs != _was_fullscreen:
@@ -442,12 +465,24 @@ func _exit_vr() -> void:
 	if xr_interface != null:
 		xr_interface.uninitialize()
 	get_viewport().use_xr = false
+	get_viewport().scaling_3d_scale = 1.0
+	$Camera3D.current = true
+	$XROrigin3D/XRCamera3D.current = false
+	$XROrigin3D/PanelViewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	$XROrigin3D/StoryViewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	$CanvasLayer.visible = true
 	$CanvasLayer/EnterVR.visible = true
 	$CanvasLayer/Fullscreen.visible = true
 
 
 func _on_session_started() -> void:
 	get_viewport().use_xr = true
+	get_viewport().scaling_3d_scale = XR_SCALING_3D_SCALE
+	$XROrigin3D/XRCamera3D.current = true
+	$Camera3D.current = false
+	$XROrigin3D/PanelViewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	$XROrigin3D/StoryViewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	$CanvasLayer.visible = false
 	$CanvasLayer/EnterVR.visible = false
 	$CanvasLayer/Fullscreen.visible = false
 	_apply_quality_tier()
@@ -455,7 +490,14 @@ func _on_session_started() -> void:
 
 func _on_session_ended() -> void:
 	get_viewport().use_xr = false
+	get_viewport().scaling_3d_scale = 1.0
+	$Camera3D.current = true
+	$XROrigin3D/XRCamera3D.current = false
+	$XROrigin3D/PanelViewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	$XROrigin3D/StoryViewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	$CanvasLayer.visible = true
 	$CanvasLayer/Fullscreen.visible = true
+	_current_xr_adaptive_steps = -1
 	_apply_quality_tier()
 
 
@@ -522,3 +564,80 @@ func _update_fullscreen_button_layout() -> void:
 func _on_window_size_changed() -> void:
 	_update_fullscreen_button()
 	_update_fullscreen_button_layout()
+
+## Dynamically scales 3D viewport rendering resolution based on camera distance to the staged
+## specimen bounding box surface. When far away, resolution scale is high (crisp overview, few
+## total rays). When close up or inside the volume, a small patch of voxels magnifies across the
+## screen; the scale smoothly lowers to prevent ray counts from exploding, holding high framerates
+## while preserving voxel-grid fidelity.
+func _update_adaptive_resolution(delta: float) -> void:
+	var vp := get_viewport()
+	var xr_active := vp.use_xr
+	var cam: Camera3D = $XROrigin3D/XRCamera3D if xr_active else $Camera3D
+	if cam == null:
+		return
+
+	var extents: Vector3 = $SpecimenStage.get_box_extents()
+	var local_cam: Vector3 = $SpecimenStage.global_transform.affine_inverse() * cam.global_position
+	var clamped: Vector3 = local_cam.clamp(-extents, extents)
+	var dist_to_box: float = local_cam.distance_to(clamped)
+
+	# Map distance to scale factor: u = 0.0 when touching or inside box, 1.0 at >= 1.5m
+	var u := clampf(dist_to_box / 1.5, 0.0, 1.0)
+	var t := pow(u, 0.75)
+
+	var active_display: Dictionary = $CanvasLayer/DisplaySettingsPanel.get_display()
+	var adaptive_xr: bool = bool(active_display.get("adaptive_steps", true))
+	var adaptive_flat: bool = bool(active_display.get("adaptive_res_flat", true))
+
+	if xr_active:
+		# Godot's WebGL Compatibility renderer does not support multiview blit with scaling_3d_scale < 1.0;
+		# it only upscales to the right eye, breaking stereoscopic rendering. Keep viewport scaling at 1.0.
+		vp.scaling_3d_scale = 1.0
+
+		if not adaptive_xr:
+			_current_xr_adaptive_steps = -1
+			return
+
+		# Instead, adaptively scale the raymarching step budget in XR based on camera distance to the box.
+		# When far away, full step count captures fine details. When close or inside, voxels are magnified,
+		# so step budget smoothly scales down, maintaining high framerate and constant GPU fill.
+		var base_steps: int = int(_authored_quality.get("max_steps", Quality.XR_STEPS))
+		if _user_touched_quality:
+			base_steps = int(active_display.get("max_steps", Quality.XR_STEPS))
+		base_steps = mini(base_steps, Quality.XR_STEPS)
+
+		var min_xr_steps := 48
+		var target_steps := int(round(lerpf(min_xr_steps, base_steps, t)))
+		target_steps = int(round(float(target_steps) / 8.0) * 8.0)
+		target_steps = clampi(target_steps, min_xr_steps, base_steps)
+
+		if target_steps != _current_xr_adaptive_steps:
+			_current_xr_adaptive_steps = target_steps
+			var is_auto_step: bool = bool(active_display.get("auto_step_size", false))
+			var step_sz: float = float(Quality.step_size_for(target_steps) if is_auto_step else active_display.get("step_size", 0.0025))
+			$SpecimenStage.apply_display({
+				"max_steps": target_steps,
+				"step_size": step_sz,
+				"lut_substeps": 1,
+			})
+		return
+
+	# In flat mode (mono rendering), scaling_3d_scale works reliably without stereo blit artifacts
+	if not adaptive_flat:
+		var manual_scale: float = float(active_display.get("scaling_3d_scale", 1.0))
+		vp.scaling_3d_scale = manual_scale
+		return
+
+	var s_min: float
+	var s_max: float
+	if OS.has_feature("mobile") or OS.has_feature("web_android") or OS.has_feature("web_ios"):
+		s_min = 0.30
+		s_max = 0.85
+	else:
+		s_min = 0.50
+		s_max = 1.00
+
+	var target_scale := lerpf(s_min, s_max, t)
+	vp.scaling_3d_scale = lerpf(vp.scaling_3d_scale, target_scale, clampf(10.0 * delta, 0.0, 1.0))
+

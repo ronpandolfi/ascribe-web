@@ -19,16 +19,26 @@ func test_mobile_web_ios_tier() -> void:
 	assert_that(float(tier["step_size"])).is_equal(0.0025)
 
 
+func test_mobile_flag_tier() -> void:
+	var tier := Quality.pick_tier(PackedStringArray(["mobile"]), false)
+	assert_that(tier["max_steps"]).is_equal(512)
+	assert_that(float(tier["step_size"])).is_equal(0.0025)
+	assert_that(tier["lut_substeps"]).is_equal(1)
+
+
 func test_xr_tier() -> void:
 	var tier := Quality.pick_tier(PackedStringArray(), true)
-	assert_that(tier["max_steps"]).is_equal(768)
-	assert_that(float(tier["step_size"])).is_equal(0.0017)
+	assert_that(tier["max_steps"]).is_equal(128)
+	assert_that(float(tier["step_size"])).is_equal(0.010)
+	# XR decouples from inner sub-stepping to prevent warp divergence and hold framerate
+	assert_that(tier["lut_substeps"]).is_equal(1)
+	assert_that(float(tier["lateral_jitter"])).is_equal(0.0)
 
 
 func test_xr_wins_over_mobile() -> void:
 	var tier := Quality.pick_tier(PackedStringArray(["web_android"]), true)
-	assert_that(tier["max_steps"]).is_equal(768)
-	assert_that(float(tier["step_size"])).is_equal(0.0017)
+	assert_that(tier["max_steps"]).is_equal(128)
+	assert_that(float(tier["step_size"])).is_equal(0.010)
 
 
 ## step_size_for is the single source of truth behind pick_tier's step sizes; the display
@@ -79,8 +89,15 @@ func test_slider_has_headroom_above_the_desktop_tier() -> void:
 # shipping, not the lowest the shader can technically run.
 func test_slider_floor_is_the_usable_minimum() -> void:
 	assert_that(DisplaySettingsPanel.MIN_STEPS).is_equal(Quality.MIN_USABLE_STEPS)
-	assert_that(Quality.MIN_USABLE_STEPS).is_greater_equal(512)
+	assert_that(Quality.MIN_USABLE_STEPS).is_greater_equal(64)
 	# Every tier must sit inside the slider's travel, or the panel cannot show the current state.
 	for steps in [Quality.MOBILE_STEPS, Quality.XR_STEPS, Quality.DESKTOP_STEPS]:
 		assert_that(steps).is_greater_equal(DisplaySettingsPanel.MIN_STEPS)
 		assert_that(steps).is_less_equal(DisplaySettingsPanel.MAX_STEPS)
+
+
+func test_lut_substeps_for_scales_with_quality() -> void:
+	assert_that(Quality.lut_substeps_for(128)).is_equal(1)
+	assert_that(Quality.lut_substeps_for(256)).is_equal(8)
+	assert_that(Quality.lut_substeps_for(512)).is_equal(32)
+	assert_that(Quality.lut_substeps_for(1024)).is_equal(192)

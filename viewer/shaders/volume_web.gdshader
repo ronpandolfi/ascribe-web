@@ -30,9 +30,18 @@ uniform float step_size = 0.005;
 
 uniform sampler3D texture_volume : source_color, filter_linear, repeat_disable;
 uniform sampler2D gradient : filter_linear, repeat_disable;
+// 2D pre-integrated transfer function LUT: maps (front_density^gamma, back_density^gamma)
+// to integrated continuous (RGB, Opacity). Replaces dynamic sub-stepping loops with 1 fetch.
+uniform sampler2D preintegrated_lut : filter_linear, repeat_disable;
+uniform bool use_preintegrated_lut = true;
 uniform float opacity = 1.0;
 uniform float gamma = 1.0;
 uniform float color_scalar = 1.0;
+// Empty-space skipping parameters:
+// ess_cutoff: mapped opacity threshold below which samples are treated as void (0.0 disables)
+// ess_stride: multiplier applied to march_step when in void space (1.0 disables leap)
+uniform float ess_cutoff = 0.002;
+uniform float ess_stride = 2.0;
 // Half-extents (in object space) of the box the volume is staged in. 0.5 on every axis is a
 // unit cube; SpecimenStage overrides this per-specimen so an anisotropic volume fills its box
 // exactly on every axis instead of being stretched.
@@ -319,8 +328,8 @@ void fragment() {
 	float density_sum = 0.0;
 	float density_count = 0.0;
 
+	float t = t_near + jitter * march_step;
 	for (int i = 0; i < max_steps; ++i) {
-		float t = t_near + (float(i) + jitter) * march_step;
 		if (t > t_far)
 			break;
 
@@ -338,25 +347,29 @@ void fragment() {
 			density_count += 1.0;
 			prev_density = density;
 			has_prev = true;
+			t += march_step;
 			continue;
 		}
 
-		// Integrate the transfer function across the density interval [prev_density, density]
-		// rather than evaluating it at this sample alone. Each sub-step carries 1/n of the
-		// segment's optical depth, so the composite is unchanged when the LUT is flat and
-		// correct when it is steep.
-		// Spend sub-steps only where they buy something. What matters is not how far the
-		// density moved but how far along the transfer function that moves the lookup -- with
-		// a high gamma a small density change can still cross a steep part of the LUT. So
-		// measure the delta in lookup space, after gamma. Samples inside uniform material move
-		// nowhere along the LUT and cost a single lookup; samples crossing a surface ramp get
-		// the full budget, which is exactly where the banding is generated.
+		// Empty-space skipping: sample the mapped transfer function to see if this interval
+		// is optically empty. If mapped opacity is near zero, skip expensive normal calculations
+		// and compositing, and take a larger stride through the void.
 		float lut_from = pow(clamp(has_prev ? prev_density : density, 0.0, 1.0), gamma);
 		float lut_to = pow(clamp(density, 0.0, 1.0), gamma);
-		float lut_delta = abs(lut_to - lut_from);
-		int substeps = clamp(int(ceil(lut_delta * float(lut_substeps))), 1, MAX_LUT_SUBSTEPS);
-		float sub_ratio = step_ratio / float(substeps);
-		float d_from = has_prev ? prev_density : density;
+		vec4 lut_sample;
+		if (use_preintegrated_lut) {
+			lut_sample = texture(preintegrated_lut, vec2(lut_from, lut_to));
+		} else {
+			lut_sample = texture(gradient, vec2(lut_to, 0.5));
+		}
+
+		float mapped_alpha = lut_sample.a * opacity;
+		if (ess_stride > 1.0 && mapped_alpha < ess_cutoff) {
+			prev_density = density;
+			has_prev = true;
+			t += march_step * ess_stride;
+			continue;
+		}
 
 		vec3 shade_scale = vec3(1.0);
 		if (shading_enabled) {
@@ -367,23 +380,37 @@ void fragment() {
 			}
 		}
 
-		for (int k = 0; k < MAX_LUT_SUBSTEPS; ++k) {
-			if (k >= substeps)
-				break;
-			// Midpoint of this sub-interval in density space.
-			float u = (float(k) + 0.5) / float(substeps);
-			float d = mix(d_from, density, u);
-			vec4 sample = texture(gradient, vec2(pow(d, gamma), 0.5));
+		if (use_preintegrated_lut || lut_substeps <= 1) {
 			float sample_opacity =
-				1.0 - pow(1.0 - clamp(sample.a * opacity, 0.0, 1.0), sub_ratio);
-
+				1.0 - pow(1.0 - clamp(mapped_alpha, 0.0, 1.0), step_ratio);
 			accumulated_color +=
-				sample.rgb * shade_scale * sample_opacity * (1.0 - total_opacity);
+				lut_sample.rgb * shade_scale * sample_opacity * (1.0 - total_opacity);
 			total_opacity += sample_opacity * (1.0 - total_opacity);
+		} else {
+			float lut_delta = abs(lut_to - lut_from);
+			int substeps = clamp(int(ceil(lut_delta * float(lut_substeps))), 1, MAX_LUT_SUBSTEPS);
+			float sub_ratio = step_ratio / float(substeps);
+			float d_from = has_prev ? prev_density : density;
+
+			for (int k = 0; k < MAX_LUT_SUBSTEPS; ++k) {
+				if (k >= substeps)
+					break;
+				// Midpoint of this sub-interval in density space.
+				float u = (float(k) + 0.5) / float(substeps);
+				float d = mix(d_from, density, u);
+				vec4 sample = texture(gradient, vec2(pow(d, gamma), 0.5));
+				float sample_opacity =
+					1.0 - pow(1.0 - clamp(sample.a * opacity, 0.0, 1.0), sub_ratio);
+
+				accumulated_color +=
+					sample.rgb * shade_scale * sample_opacity * (1.0 - total_opacity);
+				total_opacity += sample_opacity * (1.0 - total_opacity);
+			}
 		}
 
 		prev_density = density;
 		has_prev = true;
+		t += march_step;
 
 		// Saturated: everything behind this contributes nothing. Must break the march itself,
 		// not just the sub-step loop, or the ray keeps stepping for no reason.
