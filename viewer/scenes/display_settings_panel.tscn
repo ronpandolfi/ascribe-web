@@ -230,12 +230,13 @@ value = 1.0
 
 [node name="LateralDitherLabel" type="Label" parent="VBox/AdvancedScroll/AdvancedVBox"]
 layout_mode = 2
-text = "Lateral Dither: 0.0"
+text = "Lateral Dither: 4.0"
 
 [node name="LateralDither" type="HSlider" parent="VBox/AdvancedScroll/AdvancedVBox"]
 layout_mode = 2
 max_value = 8.0
 step = 0.5
+value = 4.0
 
 [node name="XRHeader" type="Label" parent="VBox/AdvancedScroll/AdvancedVBox"]
 layout_mode = 2

@@ -7,6 +7,7 @@ var _loader: BundleLoader
 var _manifest: Dictionary = {}
 var _specimens: Dictionary = {}
 var _bundle_base_url: String = ""
+var _current_display: Dictionary = {}
 
 ## Set true the moment the user manually adjusts the display settings panel; once set, automatic
 ## quality-tier application (startup, XR enter/exit) stops overriding their choice.
@@ -188,23 +189,27 @@ func _wire_xr_grab() -> void:
 ## CanvasLayer, one rendered into the SubViewport behind the in-VR quad) so each can be adjusted
 ## independently without either mode fighting the other.
 func _wire_display_panels() -> void:
-	var on_display_changed := func(display: Dictionary) -> void:
+	var desktop_panel: DisplaySettingsPanel = $CanvasLayer/DisplaySettingsPanel
+	var vr_panel: DisplaySettingsPanel = $XROrigin3D/PanelViewport/DisplaySettingsPanel
+
+	var on_display_changed := func(source: DisplaySettingsPanel, other: DisplaySettingsPanel, display: Dictionary) -> void:
 		_user_touched_quality = true
-		$SpecimenStage.apply_display(display)
+		_current_display.merge(display, true)
+		other.set_display(display)
+		$SpecimenStage.apply_display(_current_display)
 		if get_viewport().use_xr and (display.has("ffr_enabled") or display.has("ffr_level")):
-			_apply_webxr_fixed_foveation(bool(display.get("ffr_enabled", true)), float(display.get("ffr_level", 1.0)))
-	$CanvasLayer/DisplaySettingsPanel.display_changed.connect(on_display_changed)
-	$XROrigin3D/PanelViewport/DisplaySettingsPanel.display_changed.connect(on_display_changed)
+			_apply_webxr_fixed_foveation(bool(_current_display.get("ffr_enabled", true)), float(_current_display.get("ffr_level", 1.0)))
+
+	desktop_panel.display_changed.connect(func(d: Dictionary): on_display_changed.call(desktop_panel, vr_panel, d))
+	vr_panel.display_changed.connect(func(d: Dictionary): on_display_changed.call(vr_panel, desktop_panel, d))
 
 	# Only the in-VR panel offers a way out: in a headset there is no browser chrome to fall
 	# back on, and the system gesture is not obvious to someone wearing it for the first time.
-	var vr_panel: DisplaySettingsPanel = $XROrigin3D/PanelViewport/DisplaySettingsPanel
 	vr_panel.set_exit_vr_visible(true)
 	vr_panel.exit_vr_requested.connect(_exit_vr)
 
 	# Edit mode is a local authoring affordance: it needs `ascribe-bundle serve --edit` behind
 	# it, so it is opt-in via ?edit=1 and never offered for a bundle loaded from elsewhere.
-	var desktop_panel: DisplaySettingsPanel = $CanvasLayer/DisplaySettingsPanel
 	desktop_panel.set_edit_enabled(_edit_enabled())
 	desktop_panel.save_requested.connect(_save_bundle_settings)
 
@@ -220,6 +225,10 @@ func _wire_story_panels() -> void:
 			return
 		var spec_display := _display_for_specimen(specimen_id)
 		$SpecimenStage.stage(specimen_id, data, spec_display)
+		_current_display.merge(spec_display, true)
+		$CanvasLayer/DisplaySettingsPanel.set_display(spec_display)
+		$XROrigin3D/PanelViewport/DisplaySettingsPanel.set_display(spec_display)
+		$SpecimenStage.apply_display(_current_display)
 	$CanvasLayer/StoryPanel.page_pinned.connect(on_page_pinned)
 	$XROrigin3D/StoryViewport/StoryPanel.page_pinned.connect(on_page_pinned)
 
@@ -262,9 +271,10 @@ func _apply_quality_tier() -> void:
 		else:
 			tier["step_size"] = Quality.step_size_for(steps)
 		tier["lut_substeps"] = 1 if is_constrained else Quality.lut_substeps_for(steps)
-	$SpecimenStage.apply_display(tier)
-	$CanvasLayer/DisplaySettingsPanel.set_display(tier)
-	$XROrigin3D/PanelViewport/DisplaySettingsPanel.set_display(tier)
+	_current_display.merge(tier, true)
+	$SpecimenStage.apply_display(_current_display)
+	$CanvasLayer/DisplaySettingsPanel.set_display(_current_display)
+	$XROrigin3D/PanelViewport/DisplaySettingsPanel.set_display(_current_display)
 
 
 ## Feeds the staged volume the current per-eye offsets while an XR session is running, so the
@@ -655,6 +665,7 @@ func _update_adaptive_resolution(delta: float) -> void:
 
 	var active_display: Dictionary = $CanvasLayer/DisplaySettingsPanel.get_display()
 	var adaptive_xr: bool = bool(active_display.get("adaptive_steps", true))
+	var motion_adaptive: bool = bool(active_display.get("motion_adaptive_steps", true))
 	var adaptive_flat: bool = bool(active_display.get("adaptive_res_flat", true))
 
 	if xr_active:
@@ -666,7 +677,7 @@ func _update_adaptive_resolution(delta: float) -> void:
 			var vscale: float = float(active_display.get("volume_render_scale", 1.0))
 			_apply_webxr_viewport_scale(vscale)
 
-		if not adaptive_xr:
+		if not adaptive_xr and not motion_adaptive:
 			_current_xr_adaptive_steps = -1
 			return
 
@@ -676,10 +687,13 @@ func _update_adaptive_resolution(delta: float) -> void:
 		var base_steps: int = int(_authored_quality.get("max_steps", Quality.XR_STEPS))
 		if _user_touched_quality:
 			base_steps = int(active_display.get("max_steps", Quality.XR_STEPS))
-		base_steps = mini(base_steps, Quality.XR_STEPS)
+		else:
+			base_steps = mini(base_steps, Quality.XR_STEPS)
 
 		var min_xr_steps := 48
-		var target_steps := int(round(lerpf(min_xr_steps, base_steps, t)))
+		var target_steps := base_steps
+		if adaptive_xr:
+			target_steps = int(round(lerpf(min_xr_steps, base_steps, t)))
 
 		# Motion-adaptive quality throttling: during head rotation or rapid movement,
 		# reduce raymarching steps down toward motion_step_floor to prevent dropping frames.
@@ -697,7 +711,6 @@ func _update_adaptive_resolution(delta: float) -> void:
 			else:
 				_smoothed_angular_speed = lerpf(_smoothed_angular_speed, angular_speed, clampf(8.0 * delta, 0.0, 1.0))
 
-		var motion_adaptive: bool = bool(active_display.get("motion_adaptive_steps", true))
 		if motion_adaptive:
 			var motion_floor: int = int(active_display.get("motion_step_floor", 48))
 			var motion_sens: float = float(active_display.get("motion_sensitivity", 25.0))
@@ -712,10 +725,11 @@ func _update_adaptive_resolution(delta: float) -> void:
 			_current_xr_adaptive_steps = target_steps
 			var is_auto_step: bool = bool(active_display.get("auto_step_size", false))
 			var step_sz: float = float(Quality.step_size_for(target_steps) if is_auto_step else active_display.get("step_size", 0.0025))
+			var lut_subs: int = int(active_display.get("lut_substeps", 1))
 			$SpecimenStage.apply_display({
 				"max_steps": target_steps,
 				"step_size": step_sz,
-				"lut_substeps": 1,
+				"lut_substeps": lut_subs,
 			})
 		return
 

@@ -188,6 +188,7 @@ func _ready() -> void:
 		_update_label(_jitter_label, "Ray Start Jitter: %.1f" % v)
 		_emit_changed()
 	)
+	_lateral_dither_slider.value = 4.0
 	_lateral_dither_slider.value_changed.connect(func(v):
 		_update_label(_lateral_dither_label, "Lateral Dither: %.1f" % v)
 		_emit_changed()
@@ -304,7 +305,7 @@ func get_display() -> Dictionary:
 		"use_preintegrated_lut": _lut_check.button_pressed if _lut_check else true,
 		"lut_substeps": lut_sub,
 		"jitter_amount": float(_jitter_slider.value if _jitter_slider else 1.0),
-		"lateral_jitter": float(_lateral_dither_slider.value if _lateral_dither_slider else 0.0),
+		"lateral_jitter": float(_lateral_dither_slider.value if _lateral_dither_slider else 4.0),
 		"ffr_enabled": _ffr_check.button_pressed if _ffr_check else true,
 		"ffr_level": float(_ffr_slider.value if _ffr_slider else 1.0),
 		"motion_adaptive_steps": _motion_adaptive_check.button_pressed if _motion_adaptive_check else true,
@@ -340,6 +341,9 @@ func set_display(display: Dictionary) -> void:
 			var sz := float(display["step_size"])
 			_step_size_slider.set_value_no_signal(sz)
 			_update_label(_step_size_label, "Step Size: %.4f" % sz)
+			if _auto_step_check and not display.has("auto_step_size"):
+				if abs(sz - Quality.step_size_for(steps)) > 0.0001:
+					_auto_step_check.set_pressed_no_signal(false)
 		elif _auto_step_check and _auto_step_check.button_pressed and _step_size_slider:
 			var sz := Quality.step_size_for(steps)
 			_step_size_slider.set_value_no_signal(sz)
@@ -349,6 +353,8 @@ func set_display(display: Dictionary) -> void:
 		var sz := float(display["step_size"])
 		_step_size_slider.set_value_no_signal(sz)
 		_update_label(_step_size_label, "Step Size: %.4f" % sz)
+		if _auto_step_check and not display.has("auto_step_size"):
+			_auto_step_check.set_pressed_no_signal(false)
 
 	if display.has("auto_step_size") and _auto_step_check:
 		_auto_step_check.set_pressed_no_signal(bool(display["auto_step_size"]))

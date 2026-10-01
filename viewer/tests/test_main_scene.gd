@@ -319,3 +319,129 @@ func test_loading_screen_elements_and_visibility() -> void:
 	main._on_loaded({"version": 1, "title": "T", "specimens": []}, {})
 	assert_bool(progress_bar.visible).is_false()
 	assert_bool(loading_label.visible).is_false()
+
+func test_display_settings_sync_between_desktop_and_vr_panels() -> void:
+	var main := await _make_main()
+	var desktop_panel: DisplaySettingsPanel = main.get_node("CanvasLayer/DisplaySettingsPanel")
+	var vr_panel: DisplaySettingsPanel = main.get_node("XROrigin3D/PanelViewport/DisplaySettingsPanel")
+
+	# Simulating user tweaking settings in VR panel
+	vr_panel.set_display({
+		"gamma": 1.75,
+		"max_steps": 128,
+		"step_size": 0.002,
+		"auto_step_size": false,
+		"lateral_jitter": 4.0,
+	})
+	vr_panel._emit_changed()
+
+	# Desktop panel should immediately reflect the VR changes
+	var desktop_display := desktop_panel.get_display()
+	assert_float(desktop_display["gamma"]).is_equal_approx(1.75, 0.01)
+	assert_int(desktop_display["max_steps"]).is_equal(128)
+	assert_float(desktop_display["step_size"]).is_equal_approx(0.002, 0.0001)
+	assert_bool(desktop_display["auto_step_size"]).is_false()
+
+	# Simulating user tweaking settings on Desktop panel
+	desktop_panel.set_display({
+		"gamma": 2.2,
+		"max_steps": 160,
+	})
+	desktop_panel._emit_changed()
+
+	# VR panel should immediately reflect desktop changes
+	var vr_display := vr_panel.get_display()
+	assert_float(vr_display["gamma"]).is_equal_approx(2.2, 0.01)
+	assert_int(vr_display["max_steps"]).is_equal(160)
+
+
+func test_adaptive_resolution_preserves_user_settings() -> void:
+	var main := await _make_main()
+	var vr_panel: DisplaySettingsPanel = main.get_node("XROrigin3D/PanelViewport/DisplaySettingsPanel")
+	var stage: SpecimenStage = main.get_node("SpecimenStage")
+	var vp := main.get_viewport()
+
+	var mesh_inst := MeshInstance3D.new()
+	mesh_inst.mesh = BoxMesh.new()
+	var mat := ShaderMaterial.new()
+	mat.shader = SpecimenStage.VOLUME_SHADER
+	mesh_inst.set_surface_override_material(0, mat)
+	stage.add_child(mesh_inst)
+
+	# User in VR configures manual step size and 2 LUT sub-steps
+	vr_panel.set_display({
+		"max_steps": 128,
+		"step_size": 0.0033,
+		"auto_step_size": false,
+		"lut_substeps": 2,
+		"adaptive_steps": true,
+		"motion_adaptive_steps": false,
+	})
+	vr_panel._emit_changed()
+
+	main._on_session_started()
+	vp.use_xr = true
+	main._current_xr_adaptive_steps = -1
+
+	# Call _update_adaptive_resolution
+	main._update_adaptive_resolution(0.016)
+
+	# Verify that if auto_step_size is false, the manual step_size and lut_substeps are preserved
+	assert_float(mat.get_shader_parameter("step_size")).is_equal_approx(0.0033, 0.0001)
+	assert_int(mat.get_shader_parameter("lut_substeps")).is_equal(2)
+
+	main._on_session_ended()
+	vp.use_xr = false
+
+
+func test_adaptive_resolution_disabled_prevents_overrides() -> void:
+	var main := await _make_main()
+	var vr_panel: DisplaySettingsPanel = main.get_node("XROrigin3D/PanelViewport/DisplaySettingsPanel")
+	var vp := main.get_viewport()
+
+	# Both adaptive steps disabled
+	vr_panel.set_display({
+		"max_steps": 100,
+		"adaptive_steps": false,
+		"motion_adaptive_steps": false,
+	})
+	vr_panel._emit_changed()
+
+	main._on_session_started()
+	vp.use_xr = true
+	main._current_xr_adaptive_steps = 999
+
+	# _update_adaptive_resolution should return early without modifying shader steps
+	main._update_adaptive_resolution(0.016)
+	assert_int(main._current_xr_adaptive_steps).is_equal(-1)
+
+	main._on_session_ended()
+	vp.use_xr = false
+func test_story_pinning_specimen_updates_both_panels() -> void:
+	var main := await _make_main()
+	var desktop_panel: DisplaySettingsPanel = main.get_node("CanvasLayer/DisplaySettingsPanel")
+	var vr_panel: DisplaySettingsPanel = main.get_node("XROrigin3D/PanelViewport/DisplaySettingsPanel")
+	var story: StoryPanel = main.get_node("CanvasLayer/StoryPanel")
+
+	main._manifest = {
+		"specimens": [
+			{
+				"id": "spec_a",
+				"display": {"gamma": 2.5, "opacity": 0.5, "max_steps": 200}
+			}
+		]
+	}
+	main._specimens = {
+		"spec_a": WebVolumetricData.new()
+	}
+
+	story.page_pinned.emit("spec_a")
+
+	assert_float(desktop_panel.get_display()["gamma"]).is_equal_approx(2.5, 0.01)
+	assert_float(desktop_panel.get_display()["opacity"]).is_equal_approx(0.5, 0.01)
+	assert_int(desktop_panel.get_display()["max_steps"]).is_equal(200)
+
+	assert_float(vr_panel.get_display()["gamma"]).is_equal_approx(2.5, 0.01)
+	assert_float(vr_panel.get_display()["opacity"]).is_equal_approx(0.5, 0.01)
+	assert_int(vr_panel.get_display()["max_steps"]).is_equal(200)
+

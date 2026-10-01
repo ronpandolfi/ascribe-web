@@ -143,6 +143,10 @@ func _apply_display_to_material(mat: ShaderMaterial, display: Dictionary) -> voi
 		mat.set_shader_parameter("max_steps", int(display["max_steps"]))
 	if display.has("step_size"):
 		mat.set_shader_parameter("step_size", float(display["step_size"]))
+	if display.has("auto_step_size"):
+		mat.set_shader_parameter("enforce_exact_step_size", not bool(display["auto_step_size"]))
+	elif display.has("enforce_exact_step_size"):
+		mat.set_shader_parameter("enforce_exact_step_size", bool(display["enforce_exact_step_size"]))
 	# Lateral (screen-plane) dither, in units of the march step. Breaks the coherent moire that
 	# arises because neighbouring rays sample a surface at nearly the same phase, at the cost of
 	# per-pixel grain. 0 disables it.

@@ -27,6 +27,7 @@ const int MAX_LUT_SUBSTEPS = 64;
 
 uniform int max_steps = 256;
 uniform float step_size = 0.005;
+uniform bool enforce_exact_step_size = false;
 uniform bool opacity_adaptive_stepping = false;
 uniform float opacity_search_stride = 2.0;
 uniform float volume_render_scale = 1.0;
@@ -324,6 +325,9 @@ void fragment() {
 	float span = max(t_far - t_near, 0.0);
 	float eff_step_size = step_size / clamp(volume_render_scale, 0.25, 1.0);
 	float march_step = max(eff_step_size, span / float(max_steps));
+	if (enforce_exact_step_size) {
+		march_step = eff_step_size;
+	}
 
 	// Opacity correction keeps density independent of step size.
 	vec3 accumulated_color = vec3(0.0);
