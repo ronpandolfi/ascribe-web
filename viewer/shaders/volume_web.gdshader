@@ -44,6 +44,9 @@ uniform float color_scalar = 1.0;
 // ess_stride: multiplier applied to march_step when in void space (1.0 disables leap)
 uniform float ess_cutoff = 0.002;
 uniform float ess_stride = 2.0;
+uniform sampler3D coarse_occupancy_grid : filter_linear, repeat_disable;
+uniform bool use_coarse_grid = true;
+uniform float coarse_leap_stride = 3.0;
 // Half-extents (in object space) of the box the volume is staged in. 0.5 on every axis is a
 // unit cube; SpecimenStage overrides this per-specimen so an anisotropic volume fills its box
 // exactly on every axis instead of being stretched.
@@ -336,6 +339,17 @@ void fragment() {
 
 		vec3 ray_pos = ro + rd * t;
 		vec3 tex_sample_pt = (ray_pos / (2.0 * box_extents)) + vec3(0.5);
+
+		// Coarse 3D occupancy grid skipping:
+		// When searching for the volume boundary (total_opacity == 0.0), check the L1-cached
+		// coarse 3D grid. If the coarse cell is empty, skip high-res sampling entirely.
+		if (use_coarse_grid && total_opacity == 0.0) {
+			float coarse_d = texture(coarse_occupancy_grid, tex_sample_pt).r;
+			if (coarse_d < ess_cutoff) {
+				t += march_step * coarse_leap_stride;
+				continue;
+			}
+		}
 
 		vec3 sample_pt = smooth_sampling ? quintic_texel_coord(tex_sample_pt) : tex_sample_pt;
 		float density = manual_filter

@@ -176,6 +176,22 @@ max_value = 0.01
 step = 0.0005
 value = 0.002
 
+[node name="CoarseGridEnabled" type="CheckBox" parent="VBox/AdvancedScroll/AdvancedVBox"]
+layout_mode = 2
+button_pressed = true
+text = "Coarse Occupancy Grid (3D ESS)"
+
+[node name="CoarseStrideLabel" type="Label" parent="VBox/AdvancedScroll/AdvancedVBox"]
+layout_mode = 2
+text = "Coarse Leap Stride: 3.0x"
+
+[node name="CoarseStride" type="HSlider" parent="VBox/AdvancedScroll/AdvancedVBox"]
+layout_mode = 2
+min_value = 1.5
+max_value = 6.0
+step = 0.5
+value = 3.0
+
 [node name="SamplingHeader" type="Label" parent="VBox/AdvancedScroll/AdvancedVBox"]
 layout_mode = 2
 text = "-- Sampling & Dither --"

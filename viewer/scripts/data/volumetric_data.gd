@@ -15,6 +15,7 @@ extends RefCounted
 signal data_ready
 
 var _texture: Texture3D
+var _coarse_texture: Texture3D
 var _dimensions: Vector3i
 var _spacing: Vector3 = Vector3.ONE
 var _origin: Vector3 = Vector3.ZERO
@@ -30,6 +31,10 @@ func get_data() -> Texture3D:
 
 func get_texture() -> Texture3D:
 	return _texture
+
+
+func get_coarse_texture() -> Texture3D:
+	return _coarse_texture
 
 
 func get_dimensions() -> Vector3i:
@@ -72,6 +77,7 @@ func _create_image_from_bytes(raw: PackedByteArray, width: int, height: int, dty
 
 func clear() -> void:
 	_texture = null
+	_coarse_texture = null
 	_dimensions = Vector3i.ZERO
 	_spacing = Vector3.ONE
 	_origin = Vector3.ZERO
@@ -133,6 +139,7 @@ func set_from_bytes(preamble: Dictionary, body: PackedByteArray, offset: int) ->
 	var tex := ImageTexture3D.new()
 	tex.create(images[0].get_format(), width, height, depth, false, images)
 	_texture = tex
+	_coarse_texture = create_coarse_occupancy_grid(images, width, height, depth, 16)
 	data_ready.emit()
 	return true
 
@@ -195,5 +202,44 @@ func build_async(preamble: Dictionary, body: PackedByteArray, offset: int, tree:
 	var tex := ImageTexture3D.new()
 	tex.create(images[0].get_format(), width, height, depth, false, images)
 	_texture = tex
+	_coarse_texture = create_coarse_occupancy_grid(images, width, height, depth, 16)
 	data_ready.emit()
 	return true
+
+## Generates a 16x16x16 coarse occupancy grid texture from slice images for empty-space skipping.
+static func create_coarse_occupancy_grid(images: Array[Image], width: int, height: int, depth: int, grid_size: int = 16) -> ImageTexture3D:
+	if images.is_empty() or width <= 0 or height <= 0 or depth <= 0:
+		return null
+	var coarse_images: Array[Image] = []
+	var z_step := float(depth) / float(grid_size)
+	var y_step := float(height) / float(grid_size)
+	var x_step := float(width) / float(grid_size)
+
+	for cz in range(grid_size):
+		var raw_bytes := PackedByteArray()
+		raw_bytes.resize(grid_size * grid_size)
+		var z_mid := clampi(int((float(cz) + 0.5) * z_step), 0, depth - 1)
+		var img_z: Image = images[z_mid]
+
+		for cy in range(grid_size):
+			var y_mid := clampi(int((float(cy) + 0.5) * y_step), 0, height - 1)
+			var y_offset := cy * grid_size
+
+			for cx in range(grid_size):
+				var x_mid := clampi(int((float(cx) + 0.5) * x_step), 0, width - 1)
+				var c_val: float = img_z.get_pixel(x_mid, y_mid).r
+				var max_val: float = c_val
+				var x_corner := clampi(int(float(cx) * x_step), 0, width - 1)
+				var y_corner := clampi(int(float(cy) * y_step), 0, height - 1)
+				max_val = maxf(max_val, img_z.get_pixel(x_corner, y_corner).r)
+
+				raw_bytes[y_offset + cx] = int(clampf(max_val * 255.0, 0.0, 255.0))
+
+		var coarse_slice := Image.create_from_data(grid_size, grid_size, false, Image.FORMAT_L8, raw_bytes)
+		coarse_images.append(coarse_slice)
+
+	var coarse_tex := ImageTexture3D.new()
+	var err := coarse_tex.create(Image.FORMAT_L8, grid_size, grid_size, grid_size, false, coarse_images)
+	if err != OK:
+		return null
+	return coarse_tex

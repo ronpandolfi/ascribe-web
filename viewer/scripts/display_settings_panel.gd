@@ -47,6 +47,9 @@ var _advanced_open := false
 @onready var _ess_stride_slider: HSlider = $VBox/AdvancedScroll/AdvancedVBox/ESSStride
 @onready var _ess_cutoff_label: Label = $VBox/AdvancedScroll/AdvancedVBox/ESSCutoffLabel
 @onready var _ess_cutoff_slider: HSlider = $VBox/AdvancedScroll/AdvancedVBox/ESSCutoff
+@onready var _coarse_grid_check: CheckBox = $VBox/AdvancedScroll/AdvancedVBox/CoarseGridEnabled
+@onready var _coarse_stride_label: Label = $VBox/AdvancedScroll/AdvancedVBox/CoarseStrideLabel
+@onready var _coarse_stride_slider: HSlider = $VBox/AdvancedScroll/AdvancedVBox/CoarseStride
 
 @onready var _lut_check: CheckBox = $VBox/AdvancedScroll/AdvancedVBox/PreintegratedLUT
 @onready var _lut_substeps_label: Label = $VBox/AdvancedScroll/AdvancedVBox/LUTSubstepsLabel
@@ -163,6 +166,11 @@ func _ready() -> void:
 		_update_label(_ess_cutoff_label, "ESS Alpha Cutoff: %.4f" % v)
 		_emit_changed()
 	)
+	_coarse_grid_check.toggled.connect(func(_p): _emit_changed())
+	_coarse_stride_slider.value_changed.connect(func(v):
+		_update_label(_coarse_stride_label, "Coarse Leap Stride: %.1fx" % v)
+		_emit_changed()
+	)
 
 	# Sampling controls
 	_lut_check.toggled.connect(func(_p): _emit_changed())
@@ -235,6 +243,7 @@ func _refresh_labels() -> void:
 	_update_label(_early_cutoff_label, "Early Ray Cutoff: %.3f" % _early_cutoff_slider.value)
 	_update_label(_ess_stride_label, "ESS Leap Stride: %.1fx" % _ess_stride_slider.value)
 	_update_label(_ess_cutoff_label, "ESS Alpha Cutoff: %.4f" % _ess_cutoff_slider.value)
+	_update_label(_coarse_stride_label, "Coarse Leap Stride: %.1fx" % _coarse_stride_slider.value)
 	_update_label(_lut_substeps_label, "LUT Sub-steps: %d" % int(_lut_substeps_slider.value))
 	_update_label(_jitter_label, "Ray Start Jitter: %.1f" % _jitter_slider.value)
 	_update_label(_lateral_dither_label, "Lateral Dither: %.1f" % _lateral_dither_slider.value)
@@ -276,6 +285,8 @@ func get_display() -> Dictionary:
 		"ess_enabled": ess_on,
 		"ess_stride": ess_s,
 		"ess_cutoff": ess_c,
+		"use_coarse_grid": _coarse_grid_check.button_pressed if _coarse_grid_check else true,
+		"coarse_leap_stride": float(_coarse_stride_slider.value if _coarse_stride_slider else 3.0),
 		"use_preintegrated_lut": _lut_check.button_pressed if _lut_check else true,
 		"lut_substeps": lut_sub,
 		"jitter_amount": float(_jitter_slider.value if _jitter_slider else 1.0),
@@ -348,6 +359,12 @@ func set_display(display: Dictionary) -> void:
 		var cut := float(display["ess_cutoff"])
 		_ess_cutoff_slider.set_value_no_signal(cut)
 		_update_label(_ess_cutoff_label, "ESS Alpha Cutoff: %.4f" % cut)
+	if display.has("use_coarse_grid") and _coarse_grid_check:
+		_coarse_grid_check.set_pressed_no_signal(bool(display["use_coarse_grid"]))
+	if display.has("coarse_leap_stride") and _coarse_stride_slider:
+		var cs := float(display["coarse_leap_stride"])
+		_coarse_stride_slider.set_value_no_signal(cs)
+		_update_label(_coarse_stride_label, "Coarse Leap Stride: %.1fx" % cs)
 	if display.has("use_preintegrated_lut") and _lut_check:
 		_lut_check.set_pressed_no_signal(bool(display["use_preintegrated_lut"]))
 	if display.has("lut_substeps") and _lut_substeps_slider:

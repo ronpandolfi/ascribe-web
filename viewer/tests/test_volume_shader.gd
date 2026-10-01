@@ -172,3 +172,11 @@ func test_opacity_adaptive_stepping_uniforms_and_logic() -> void:
 	assert_str(src).contains("uniform float opacity_search_stride = 2.0;")
 	assert_str(src).contains("if (opacity_adaptive_stepping)")
 	assert_str(src).contains("current_step = march_step * opacity_search_stride;")
+
+func test_coarse_occupancy_grid_uniforms_and_logic() -> void:
+	var src := _source()
+	assert_str(src).contains("uniform sampler3D coarse_occupancy_grid")
+	assert_str(src).contains("uniform bool use_coarse_grid = true;")
+	assert_str(src).contains("uniform float coarse_leap_stride = 3.0;")
+	assert_str(src).contains("if (use_coarse_grid && total_opacity == 0.0)")
+	assert_str(src).contains("t += march_step * coarse_leap_stride;")

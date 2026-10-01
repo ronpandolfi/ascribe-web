@@ -70,6 +70,10 @@ func _stage_volume(vol: WebVolumetricData, display: Dictionary) -> void:
 	var mat := ShaderMaterial.new()
 	mat.shader = VOLUME_SHADER
 	mat.set_shader_parameter("texture_volume", vol.get_texture())
+	var coarse_tex: Texture3D = vol.get_coarse_texture() if vol.has_method("get_coarse_texture") else null
+	if coarse_tex == null:
+		coarse_tex = _get_default_coarse_grid()
+	mat.set_shader_parameter("coarse_occupancy_grid", coarse_tex)
 	# Half-extents of the staged box; keeps the raymarch's ray-box intersection and texture
 	# coordinate normalization matched to the actual (possibly non-cubic) box, not a unit cube.
 	mat.set_shader_parameter("box_extents", box_size / 2.0)
@@ -161,6 +165,10 @@ func _apply_display_to_material(mat: ShaderMaterial, display: Dictionary) -> voi
 		mat.set_shader_parameter("opacity_adaptive_stepping", bool(display["opacity_adaptive_stepping"]))
 	if display.has("opacity_search_stride"):
 		mat.set_shader_parameter("opacity_search_stride", float(display["opacity_search_stride"]))
+	if display.has("use_coarse_grid"):
+		mat.set_shader_parameter("use_coarse_grid", bool(display["use_coarse_grid"]))
+	if display.has("coarse_leap_stride"):
+		mat.set_shader_parameter("coarse_leap_stride", float(display["coarse_leap_stride"]))
 
 
 ## Builds a GradientTexture1D from a list of `[offset: float, hex_color: String]` stops (the
@@ -299,3 +307,17 @@ func _preintegrated_from_gradient(gradient: Gradient, n: int = 128) -> ImageText
 
 	img.set_data(n, n, false, Image.FORMAT_RGBA8, data)
 	return ImageTexture.create_from_image(img)
+
+var _default_coarse_grid: Texture3D = null
+
+func _get_default_coarse_grid() -> Texture3D:
+	if _default_coarse_grid == null:
+		var imgs: Array[Image] = []
+		for z in range(2):
+			var img := Image.create(2, 2, false, Image.FORMAT_L8)
+			img.fill(Color(1.0, 1.0, 1.0, 1.0))
+			imgs.append(img)
+		var tex := ImageTexture3D.new()
+		tex.create(Image.FORMAT_L8, 2, 2, 2, false, imgs)
+		_default_coarse_grid = tex
+	return _default_coarse_grid

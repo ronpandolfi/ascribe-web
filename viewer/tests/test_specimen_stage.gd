@@ -268,6 +268,8 @@ func test_advanced_display_parameters_reach_the_shader() -> void:
 		"ess_stride": 3.0,
 		"opacity_adaptive_stepping": true,
 		"opacity_search_stride": 2.5,
+		"use_coarse_grid": false,
+		"coarse_leap_stride": 4.5,
 	})
 
 	var mesh_child: MeshInstance3D = null
@@ -283,4 +285,6 @@ func test_advanced_display_parameters_reach_the_shader() -> void:
 	assert_float(mat.get_shader_parameter("ess_stride")).is_equal_approx(3.0, 0.001)
 	assert_that(bool(mat.get_shader_parameter("opacity_adaptive_stepping"))).is_true()
 	assert_float(mat.get_shader_parameter("opacity_search_stride")).is_equal_approx(2.5, 0.001)
+	assert_that(bool(mat.get_shader_parameter("use_coarse_grid"))).is_false()
+	assert_float(mat.get_shader_parameter("coarse_leap_stride")).is_equal_approx(4.5, 0.001)
 
