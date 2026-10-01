@@ -65,10 +65,21 @@ var _advanced_open := false
 @onready var _ffr_slider: HSlider = $VBox/AdvancedScroll/AdvancedVBox/FFRLevel
 
 @onready var _motion_adaptive_check: CheckBox = $VBox/AdvancedScroll/AdvancedVBox/MotionAdaptiveSteps
-@onready var _motion_floor_label: Label = $VBox/AdvancedScroll/AdvancedVBox/MotionFloorLabel
-@onready var _motion_floor_slider: HSlider = $VBox/AdvancedScroll/AdvancedVBox/MotionFloor
+@onready var _motion_step_percent_label: Label = (
+	$VBox/AdvancedScroll/AdvancedVBox.get_node_or_null("MotionStepPercentLabel") as Label
+	if has_node("VBox/AdvancedScroll/AdvancedVBox") and $VBox/AdvancedScroll/AdvancedVBox.has_node("MotionStepPercentLabel")
+	else ($VBox/AdvancedScroll/AdvancedVBox.get_node_or_null("MotionFloorLabel") as Label if has_node("VBox/AdvancedScroll/AdvancedVBox") else null)
+)
+@onready var _motion_step_percent_slider: HSlider = (
+	$VBox/AdvancedScroll/AdvancedVBox.get_node_or_null("MotionStepPercent") as HSlider
+	if has_node("VBox/AdvancedScroll/AdvancedVBox") and $VBox/AdvancedScroll/AdvancedVBox.has_node("MotionStepPercent")
+	else ($VBox/AdvancedScroll/AdvancedVBox.get_node_or_null("MotionFloor") as HSlider if has_node("VBox/AdvancedScroll/AdvancedVBox") else null)
+)
+@onready var _motion_floor_label: Label = _motion_step_percent_label
+@onready var _motion_floor_slider: HSlider = _motion_step_percent_slider
 @onready var _motion_sens_label: Label = $VBox/AdvancedScroll/AdvancedVBox/MotionSensLabel
 @onready var _motion_sens_slider: HSlider = $VBox/AdvancedScroll/AdvancedVBox/MotionSens
+var _motion_step_floor_explicit: int = -1
 
 @onready var _decoupled_pass_check: CheckBox = $VBox/AdvancedScroll/AdvancedVBox/DecoupledVolumePass
 @onready var _vol_scale_label: Label = $VBox/AdvancedScroll/AdvancedVBox/VolumeScaleLabel
@@ -188,7 +199,7 @@ func _ready() -> void:
 		_update_label(_jitter_label, "Ray Start Jitter: %.1f" % v)
 		_emit_changed()
 	)
-	_lateral_dither_slider.value = 4.0
+	_lateral_dither_slider.value = 1.0
 	_lateral_dither_slider.value_changed.connect(func(v):
 		_update_label(_lateral_dither_label, "Lateral Dither: %.1f" % v)
 		_emit_changed()
@@ -201,10 +212,12 @@ func _ready() -> void:
 		_emit_changed()
 	)
 	_motion_adaptive_check.toggled.connect(func(_p): _emit_changed())
-	_motion_floor_slider.value_changed.connect(func(v):
-		_update_label(_motion_floor_label, "Motion Step Floor: %d" % int(v))
-		_emit_changed()
-	)
+	if _motion_step_percent_slider:
+		_motion_step_percent_slider.value_changed.connect(func(v):
+			_motion_step_floor_explicit = -1
+			_update_label(_motion_step_percent_label, "Motion Step Scale: %d%%" % int(v))
+			_emit_changed()
+		)
 	_motion_sens_slider.value_changed.connect(func(v):
 		_update_label(_motion_sens_label, "Motion Sensitivity: %d deg/s" % int(v))
 		_emit_changed()
@@ -228,6 +241,7 @@ func _ready() -> void:
 	_save_btn.visible = false
 	_exit_vr_btn.visible = false
 
+	_wire_grab_drag_scrolling()
 	_refresh_labels()
 
 
@@ -261,7 +275,8 @@ func _refresh_labels() -> void:
 	_update_label(_jitter_label, "Ray Start Jitter: %.1f" % _jitter_slider.value)
 	_update_label(_lateral_dither_label, "Lateral Dither: %.1f" % _lateral_dither_slider.value)
 	_update_label(_ffr_label, "FFR Level: %.1f" % _ffr_slider.value)
-	_update_label(_motion_floor_label, "Motion Step Floor: %d" % int(_motion_floor_slider.value))
+	if _motion_step_percent_slider:
+		_update_label(_motion_step_percent_label, "Motion Step Scale: %d%%" % int(_motion_step_percent_slider.value))
 	_update_label(_motion_sens_label, "Motion Sensitivity: %d deg/s" % int(_motion_sens_slider.value))
 	_update_label(_vol_scale_label, "Volume Render Scale: %.2fx" % _vol_scale_slider.value)
 	_update_label(_scale_3d_label, "Flat 3D Scale: %.2f" % _scale_3d_slider.value)
@@ -285,6 +300,9 @@ func get_display() -> Dictionary:
 	var ess_s: float = float(_ess_stride_slider.value if _ess_stride_slider else 2.0) if ess_on else 1.0
 	var ess_c: float = float(_ess_cutoff_slider.value if _ess_cutoff_slider else 0.002) if ess_on else 0.0
 
+	var motion_pct: float = float(_motion_step_percent_slider.value if _motion_step_percent_slider else 40.0)
+	var motion_flr: int = _motion_step_floor_explicit if _motion_step_floor_explicit >= 0 else int(round(float(steps) * (motion_pct / 100.0)))
+
 	return {
 		"gamma": _gamma_slider.value if _gamma_slider else $VBox/Gamma.value,
 		"opacity": _opacity_slider.value if _opacity_slider else $VBox/Opacity.value,
@@ -305,11 +323,12 @@ func get_display() -> Dictionary:
 		"use_preintegrated_lut": _lut_check.button_pressed if _lut_check else true,
 		"lut_substeps": lut_sub,
 		"jitter_amount": float(_jitter_slider.value if _jitter_slider else 1.0),
-		"lateral_jitter": float(_lateral_dither_slider.value if _lateral_dither_slider else 4.0),
+		"lateral_jitter": float(_lateral_dither_slider.value if _lateral_dither_slider else 1.0),
 		"ffr_enabled": _ffr_check.button_pressed if _ffr_check else true,
 		"ffr_level": float(_ffr_slider.value if _ffr_slider else 1.0),
 		"motion_adaptive_steps": _motion_adaptive_check.button_pressed if _motion_adaptive_check else true,
-		"motion_step_floor": int(_motion_floor_slider.value if _motion_floor_slider else 48),
+		"motion_step_percent": motion_pct,
+		"motion_step_floor": motion_flr,
 		"motion_sensitivity": float(_motion_sens_slider.value if _motion_sens_slider else 20.0),
 		"decoupled_volume_pass": _decoupled_pass_check.button_pressed if _decoupled_pass_check else false,
 		"volume_render_scale": float(_vol_scale_slider.value if _vol_scale_slider else 1.0),
@@ -337,13 +356,14 @@ func set_display(display: Dictionary) -> void:
 		if _max_steps_slider:
 			_max_steps_slider.set_value_no_signal(steps)
 			_update_label(_max_steps_label, "Raymarch Steps: %d" % steps)
+		if display.has("auto_step_size") and _auto_step_check:
+			_auto_step_check.set_pressed_no_signal(bool(display["auto_step_size"]))
 		if display.has("step_size") and _step_size_slider:
 			var sz := float(display["step_size"])
+			if _auto_step_check and _auto_step_check.button_pressed:
+				sz = Quality.step_size_for(steps)
 			_step_size_slider.set_value_no_signal(sz)
 			_update_label(_step_size_label, "Step Size: %.4f" % sz)
-			if _auto_step_check and not display.has("auto_step_size"):
-				if abs(sz - Quality.step_size_for(steps)) > 0.0001:
-					_auto_step_check.set_pressed_no_signal(false)
 		elif _auto_step_check and _auto_step_check.button_pressed and _step_size_slider:
 			var sz := Quality.step_size_for(steps)
 			_step_size_slider.set_value_no_signal(sz)
@@ -353,10 +373,8 @@ func set_display(display: Dictionary) -> void:
 		var sz := float(display["step_size"])
 		_step_size_slider.set_value_no_signal(sz)
 		_update_label(_step_size_label, "Step Size: %.4f" % sz)
-		if _auto_step_check and not display.has("auto_step_size"):
-			_auto_step_check.set_pressed_no_signal(false)
 
-	if display.has("auto_step_size") and _auto_step_check:
+	if display.has("auto_step_size") and not display.has("max_steps") and _auto_step_check:
 		_auto_step_check.set_pressed_no_signal(bool(display["auto_step_size"]))
 	if display.has("adaptive_steps") and _adaptive_steps_check:
 		_adaptive_steps_check.set_pressed_no_signal(bool(display["adaptive_steps"]))
@@ -412,10 +430,18 @@ func set_display(display: Dictionary) -> void:
 		_update_label(_ffr_label, "FFR Level: %.1f" % lvl)
 	if display.has("motion_adaptive_steps") and _motion_adaptive_check:
 		_motion_adaptive_check.set_pressed_no_signal(bool(display["motion_adaptive_steps"]))
-	if display.has("motion_step_floor") and _motion_floor_slider:
-		var flr := int(display["motion_step_floor"])
-		_motion_floor_slider.set_value_no_signal(flr)
-		_update_label(_motion_floor_label, "Motion Step Floor: %d" % flr)
+	if display.has("motion_step_percent") and _motion_step_percent_slider:
+		var pct := float(display["motion_step_percent"])
+		_motion_step_percent_slider.set_value_no_signal(pct)
+		_update_label(_motion_step_percent_label, "Motion Step Scale: %d%%" % int(pct))
+		_motion_step_floor_explicit = -1
+	elif display.has("motion_step_floor") and _motion_step_percent_slider:
+		var flr := float(display["motion_step_floor"])
+		_motion_step_floor_explicit = int(flr)
+		var cur_steps: int = int(_max_steps_slider.value if _max_steps_slider else $VBox/Quality.value)
+		var pct := clampf((flr / float(maxi(cur_steps, 1))) * 100.0, 10.0, 100.0)
+		_motion_step_percent_slider.set_value_no_signal(pct)
+		_update_label(_motion_step_percent_label, "Motion Step Scale: %d%%" % int(pct))
 	if display.has("motion_sensitivity") and _motion_sens_slider:
 		var sens := float(display["motion_sensitivity"])
 		_motion_sens_slider.set_value_no_signal(sens)
@@ -447,3 +473,55 @@ func set_edit_enabled(enabled: bool) -> void:
 
 func set_save_status(text: String) -> void:
 	$VBox/Save.text = text
+
+
+var _is_dragging_scroll: bool = false
+var _drag_start_pos: Vector2
+var _scroll_start_pos: float = 0.0
+const SCROLL_DRAG_THRESHOLD: float = 8.0
+const SCROLL_DRAG_SENSITIVITY: float = 1.8
+
+
+func _wire_grab_drag_scrolling() -> void:
+	if _advanced_scroll == null:
+		return
+	_advanced_scroll.gui_input.connect(_on_scroll_gui_input)
+	_wire_scroll_children(_advanced_scroll)
+
+
+func _wire_scroll_children(node: Node) -> void:
+	for child in node.get_children():
+		if child is Control and not (child is Range or child is BaseButton):
+			child.mouse_filter = Control.MOUSE_FILTER_PASS
+			child.gui_input.connect(_on_scroll_gui_input)
+			_wire_scroll_children(child)
+
+
+func _on_scroll_gui_input(event: InputEvent) -> void:
+	if _advanced_scroll == null:
+		return
+	var v_bar := _advanced_scroll.get_v_scroll_bar()
+	if v_bar == null:
+		return
+
+	if event is InputEventMouseButton:
+		var mouse_event := event as InputEventMouseButton
+		if mouse_event.button_index == MouseButton.MOUSE_BUTTON_LEFT:
+			if mouse_event.pressed:
+				_is_dragging_scroll = false
+				_drag_start_pos = mouse_event.global_position
+				_scroll_start_pos = float(v_bar.value)
+			else:
+				_is_dragging_scroll = false
+
+	elif event is InputEventMouseMotion:
+		var mouse_motion := event as InputEventMouseMotion
+		if mouse_motion.button_mask & MOUSE_BUTTON_MASK_LEFT:
+			var delta_y: float = mouse_motion.global_position.y - _drag_start_pos.y
+			if not _is_dragging_scroll and absf(delta_y) > SCROLL_DRAG_THRESHOLD:
+				_is_dragging_scroll = true
+
+			if _is_dragging_scroll:
+				var new_scroll: float = _scroll_start_pos - (delta_y * SCROLL_DRAG_SENSITIVITY)
+				v_bar.value = clampf(new_scroll, 0.0, float(v_bar.max_value))
+				_advanced_scroll.scroll_vertical = int(v_bar.value)

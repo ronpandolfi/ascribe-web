@@ -183,7 +183,7 @@ func test_xr_session_toggles_scaling_and_cameras() -> void:
 	assert_bool(cam_desktop.current).is_false()
 	assert_bool(cam_xr.current).is_true()
 	assert_that(panel_vp.render_target_update_mode).is_equal(SubViewport.UPDATE_ALWAYS)
-	assert_that(story_vp.render_target_update_mode).is_equal(SubViewport.UPDATE_ALWAYS)
+	assert_that(story_vp.render_target_update_mode).is_equal(SubViewport.UPDATE_DISABLED)
 
 	# End XR session
 	main._on_session_ended()

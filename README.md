@@ -74,7 +74,7 @@ specimen's decoded envelope header.
 On the desktop build you can point the viewer straight at a bundle without exporting for web:
 
 ```powershell
-& "<path to Godot_v4.6-stable_win64_console.exe>" --path viewer -- --bundle=http://localhost:8060/my_bundle
+& "C:\Program Files (x86)\Steam\steamapps\common\Godot Engine\godot.windows.opt.tools.64.exe" --path viewer -- --bundle=http://localhost:8060/my_bundle
 ```
 
 (Everything after `--` goes to the game; `--bundle=` also accepts a `res://` path.)
@@ -155,10 +155,10 @@ back on, and the system gesture is not obvious to a first-time user.
 ## Rebuilding the viewer
 
 ```powershell
-& "<path to Godot_v4.6-stable_win64_console.exe>" --headless --path viewer --export-release Web ../build/web/index.html
+& "C:\Program Files (x86)\Steam\steamapps\common\Godot Engine\godot.windows.opt.tools.64.exe" --headless --path viewer --export-release Web ../build/web/index.html
 ```
 
-Godot 4.6, Compatibility renderer, single-threaded web export (no COOP/COEP headers required by
+Godot 4.7, Compatibility renderer, single-threaded web export (no COOP/COEP headers required by
 the host). A benign segfault after "Saving resource cache" during headless export is expected and
 does not indicate export failure -- check that the export artifacts were actually written/updated.
 
@@ -246,7 +246,7 @@ Bundler (pytest):
 Viewer (gdUnit4, headless):
 
 ```powershell
-& "<path to Godot_v4.6-stable_win64_console.exe>" --headless --path viewer -s res://addons/gdUnit4/bin/GdUnitCmdTool.gd -a res://tests --ignoreHeadlessMode
+& "C:\Program Files (x86)\Steam\steamapps\common\Godot Engine\godot.windows.opt.tools.64.exe" --headless --path viewer -s res://addons/gdUnit4/bin/GdUnitCmdTool.gd -a res://tests --ignoreHeadlessMode
 ```
 
 ## Roadmap / limitations

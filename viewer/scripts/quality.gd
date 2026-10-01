@@ -72,7 +72,7 @@ static func lut_substeps_for(steps: int) -> int:
 ## `["web_android"]` when `OS.has_feature("web_android")` is true). XR wins over mobile.
 static func pick_tier(features: PackedStringArray, xr_active: bool) -> Dictionary:
 	var steps := DESKTOP_STEPS
-	var jitter := 4.0
+	var jitter := 1.0
 	if xr_active:
 		steps = XR_STEPS
 		jitter = 0.0
@@ -85,6 +85,7 @@ static func pick_tier(features: PackedStringArray, xr_active: bool) -> Dictionar
 	return {
 		"max_steps": steps,
 		"step_size": step_size_for(steps),
+		"auto_step_size": true,
 		"lut_substeps": lut_sub,
 		"lateral_jitter": jitter,
 	}

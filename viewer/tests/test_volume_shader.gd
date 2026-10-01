@@ -17,7 +17,7 @@ func test_texture_coordinates_are_normalized_by_box_extents() -> void:
 	assert_str(src).not_contains("uniform float zoom")
 
 
-# Regression: Godot 4.6's Compatibility (GLES3) backend only declares `eye_offset` in the
+# Regression: Godot 4.6 / 4.7's Compatibility (GLES3) backend only declares `eye_offset` in the
 # multiview shader variant, so referencing it fails to compile the mono variant ("undefined
 # variable eye_offset") and the whole volume renders black in a non-XR browser tab.
 func test_shader_does_not_reference_eye_offset() -> void:
@@ -84,7 +84,7 @@ func test_march_step_widens_to_cover_the_interval() -> void:
 
 
 # The per-eye origin must come from a uniform indexed by VIEW_INDEX. EYE_OFFSET cannot be named
-# without breaking the mono variant under Godot 4.6's Compatibility backend, but simply dropping
+# without breaking the mono variant under Godot 4.6 / 4.7's Compatibility backend, but simply dropping
 # it made both eyes march from the same origin -- i.e. no stereo in a headset.
 func test_per_eye_origin_uses_view_index() -> void:
 	var src := _source()
@@ -164,7 +164,7 @@ func test_saturation_breaks_the_march_not_just_the_substep_loop() -> void:
 # The lateral dither ships on: it removes the coherent moire outright rather than reducing it.
 # A manifest can still set display.lateral_jitter to 0 where the grain is not worth it.
 func test_lateral_dither_is_on_by_default() -> void:
-	assert_str(_source()).contains("uniform float lateral_jitter = 4.0;")
+	assert_str(_source()).contains("uniform float lateral_jitter = 1.0;")
 
 func test_opacity_adaptive_stepping_uniforms_and_logic() -> void:
 	var src := _source()

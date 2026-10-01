@@ -133,6 +133,21 @@ func _physics_process(_delta: float) -> void:
 	else:
 		_push_motion(uv, false)
 
+	# Forward thumbstick vertical axis as mouse wheel scroll events
+	var thumbstick_y: float = driving_controller.get_vector2("primary").y
+	if absf(thumbstick_y) > 0.2:
+		var pos := _uv_to_viewport_pos(uv)
+		var wheel_event := InputEventMouseButton.new()
+		wheel_event.position = pos
+		wheel_event.global_position = pos
+		wheel_event.button_index = MouseButton.MOUSE_BUTTON_WHEEL_UP if thumbstick_y > 0.0 else MouseButton.MOUSE_BUTTON_WHEEL_DOWN
+		wheel_event.pressed = true
+		wheel_event.factor = clampf(absf(thumbstick_y) * 2.0, 1.0, 5.0)
+		panel_viewport.push_input(wheel_event)
+		var wheel_release := wheel_event.duplicate() as InputEventMouseButton
+		wheel_release.pressed = false
+		panel_viewport.push_input(wheel_release)
+
 	_prev_active_trigger = trigger_pressed
 
 

@@ -108,7 +108,7 @@ func test_preintegrated_lut_is_generated_and_reaches_shader() -> void:
 
 
 # Regression: the shader's per-eye origin came from EYE_OFFSET, which cannot be named under
-# Godot 4.6's Compatibility backend without breaking the mono variant. Dropping it compiled but
+# Godot 4.6 / 4.7's Compatibility backend without breaking the mono variant. Dropping it compiled but
 # left both eyes marching from the same origin -- no stereo at all in a headset. The offsets now
 # arrive as a uniform array indexed by VIEW_INDEX, so they have to actually reach the material.
 func test_set_eye_offsets_reaches_the_shader() -> void:

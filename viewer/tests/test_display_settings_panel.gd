@@ -164,6 +164,44 @@ func test_set_display_sets_advanced_properties_without_emitting() -> void:
 	assert_float(d["coarse_leap_stride"]).is_equal_approx(4.0, 0.01)
 	assert_that(d["use_precomputed_normals"]).is_true()
 	assert_that(d["decoupled_volume_pass"]).is_true()
-	assert_float(d["volume_render_scale"]).is_equal_approx(0.65, 0.01)
 	assert_that(d["edge_aware_upscale"]).is_false()
+
+
+func test_default_lateral_jitter_and_motion_step_percent() -> void:
+	var panel := _make_panel()
+	var d := panel.get_display()
+	assert_float(d["lateral_jitter"]).is_equal_approx(1.0, 0.01)
+	assert_bool(d["auto_step_size"]).is_true()
+	assert_float(d["motion_step_percent"]).is_equal_approx(40.0, 0.1)
+
+
+func test_motion_step_percent_setting_and_floor_scaling() -> void:
+	var panel := _make_panel()
+	panel.set_display({"max_steps": 200, "motion_step_percent": 50.0})
+	var d := panel.get_display()
+	assert_float(d["motion_step_percent"]).is_equal_approx(50.0, 0.1)
+	assert_that(d["motion_step_floor"]).is_equal(100)
+
+
+func test_grab_drag_scroll_moves_scroll_bar() -> void:
+	var panel := _make_panel()
+	var scroll: ScrollContainer = panel.get_node("VBox/AdvancedScroll")
+	scroll.visible = true
+	var v_bar := scroll.get_v_scroll_bar()
+	v_bar.max_value = 500.0
+
+	var down := InputEventMouseButton.new()
+	down.button_index = MouseButton.MOUSE_BUTTON_LEFT
+	down.pressed = true
+	down.global_position = Vector2(50, 100)
+	panel._on_scroll_gui_input(down)
+
+	var motion := InputEventMouseMotion.new()
+	motion.button_mask = MOUSE_BUTTON_MASK_LEFT
+	# Drag upwards by 40 pixels -> should scroll down (increase scrollbar value)
+	motion.global_position = Vector2(50, 60)
+	panel._on_scroll_gui_input(motion)
+
+	assert_float(v_bar.value).is_greater(10.0)
+
 

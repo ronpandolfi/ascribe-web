@@ -12,7 +12,7 @@
 //   volume is never truncated part-way through (the opacity correction follows the step
 //   actually used, so density stays consistent).
 // - the per-eye offset comes from an `eye_offsets` uniform indexed by VIEW_INDEX rather than
-//   from EYE_OFFSET, which cannot be named at all under Godot 4.6's Compatibility (GLES3)
+//   from EYE_OFFSET, which cannot be named at all under Godot 4.6 / 4.7's Compatibility (GLES3)
 //   backend without breaking the mono shader variant. See the note in vertex().
 shader_type spatial;
 render_mode unshaded, cull_front, blend_premul_alpha;
@@ -85,7 +85,7 @@ uniform bool manual_filter = false;
 // trade -- dithering is what makes the quality setting matter, since more steps means less
 // per-ray error to scatter (grain 10.7 / 7.0 / 4.3 at 128 / 512 / 2048 steps). Set
 // `display.lateral_jitter` to 0 in a manifest for content where the grain is not worth it.
-uniform float lateral_jitter = 4.0;
+uniform float lateral_jitter = 1.0;
 
 // Diagnostic: scale of the per-ray start jitter (1.0 = one full march step, 0.0 = none).
 // With jitter off, sampling-phase error becomes coherent banding instead of fine noise, which
@@ -172,7 +172,7 @@ void vertex() {
 	// Per-eye camera position in object space, so the fragment shader needs no matrix inverses.
 	//
 	// Upstream writes `(INV_VIEW_MATRIX * vec4(EYE_OFFSET, 1.0)).xyz`, but EYE_OFFSET cannot be
-	// named here at all: Godot 4.6's Compatibility (GLES3) backend only declares `eye_offset` in
+	// named here at all: Godot 4.6 / 4.7's Compatibility (GLES3) backend only declares `eye_offset` in
 	// the multiview shader variant, so the mono variant fails to compile and nothing draws in a
 	// normal browser tab. Dropping it entirely compiled, but then both eyes marched from the
 	// same origin -- the image was identical in each eye, i.e. no stereo at all.

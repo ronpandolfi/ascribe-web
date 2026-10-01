@@ -181,14 +181,17 @@ func _wire_xr_grab() -> void:
 	pointer.panel_viewport = $XROrigin3D/PanelViewport
 	pointer.laser_dot = $XROrigin3D/LaserDot
 
-	# Story panel gets its own pointer instance (same ray-cast mechanism, different quad); it has
-	# no left-controller toggle wired so it simply stays visible.
+	# Story panel is removed from XR mode per user request
 	var story_pointer := $XROrigin3D/StoryPanelPointer
 	story_pointer.right_controller = $XROrigin3D/RightController
 	story_pointer.left_controller = $XROrigin3D/LeftController
 	story_pointer.panel_quad = $XROrigin3D/StoryQuad
 	story_pointer.panel_viewport = $XROrigin3D/StoryViewport
 	story_pointer.laser_dot = $XROrigin3D/StoryLaserDot
+	story_pointer.set_physics_process(false)
+	$XROrigin3D/StoryQuad.visible = false
+	$XROrigin3D/StoryLaserDot.visible = false
+	$XROrigin3D/StoryViewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
 
 
 ## Connects both the desktop and in-VR display settings panels to the staged specimen. They are
@@ -470,8 +473,10 @@ func _on_loaded(manifest: Dictionary, specimens: Dictionary) -> void:
 
 	var story: Array = manifest.get("story", [])
 	$CanvasLayer/StoryPanel.set_story(story, _bundle_base_url)
-	$XROrigin3D/StoryViewport/StoryPanel.set_story(story, _bundle_base_url)
-	$XROrigin3D/StoryQuad.visible = not story.is_empty()
+	# XR mode does not show story text
+	$XROrigin3D/StoryQuad.visible = false
+	$XROrigin3D/StoryLaserDot.visible = false
+	$XROrigin3D/StoryViewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	_update_fullscreen_button_layout()
 
 
@@ -517,7 +522,9 @@ func _on_session_started() -> void:
 	$XROrigin3D/XRCamera3D.current = true
 	$Camera3D.current = false
 	$XROrigin3D/PanelViewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
-	$XROrigin3D/StoryViewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	$XROrigin3D/StoryViewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	$XROrigin3D/StoryQuad.visible = false
+	$XROrigin3D/StoryLaserDot.visible = false
 	$CanvasLayer.visible = false
 	$CanvasLayer/EnterVR.visible = false
 	$CanvasLayer/Fullscreen.visible = false
@@ -638,8 +645,12 @@ func _init_webxr_ffr_hooks() -> void:
 		}
 		if (navigator.xr && navigator.xr.requestSession) {
 			var origReq = navigator.xr.requestSession.bind(navigator.xr);
-			navigator.xr.requestSession = async function() {
-				var session = await origReq.apply(navigator.xr, arguments);
+			navigator.xr.requestSession = async function(mode, init) {
+				init = init || {};
+				init.optionalFeatures = init.optionalFeatures || [];
+				if (!init.optionalFeatures.includes('high-fixed-foveation-level')) init.optionalFeatures.push('high-fixed-foveation-level');
+				if (!init.optionalFeatures.includes('low-fixed-foveation-level')) init.optionalFeatures.push('low-fixed-foveation-level');
+				var session = await origReq.call(navigator.xr, mode, init);
 				window.__webxr_session = session;
 				var origUpdate = session.updateRenderState.bind(session);
 				session.updateRenderState = function(state) {
@@ -832,14 +843,17 @@ func _update_adaptive_resolution(delta: float) -> void:
 				_smoothed_angular_speed = 0.0
 
 		if motion_adaptive and _smoothed_angular_speed > 0.0:
-			var motion_floor: int = int(active_display.get("motion_step_floor", 48))
+			var motion_pct: float = float(active_display.get("motion_step_percent", 40.0)) / 100.0
+			if active_display.has("motion_step_floor") and not active_display.has("motion_step_percent"):
+				motion_pct = clampf(float(active_display["motion_step_floor"]) / float(maxi(base_steps, 1)), 0.1, 1.0)
 			var motion_sens: float = float(active_display.get("motion_sensitivity", 20.0))
 			if motion_sens > 0.0:
 				var motion_factor := clampf(_smoothed_angular_speed / motion_sens, 0.0, 1.0)
-				target_steps = int(round(lerpf(float(target_steps), float(motion_floor), motion_factor)))
+				var min_steps := maxf(16.0, float(base_steps) * motion_pct)
+				target_steps = int(round(lerpf(float(target_steps), min_steps, motion_factor)))
 
 		target_steps = int(round(float(target_steps) / 8.0) * 8.0)
-		target_steps = clampi(target_steps, 32, base_steps)
+		target_steps = clampi(target_steps, 16, base_steps)
 
 		if target_steps != _current_xr_adaptive_steps:
 			_current_xr_adaptive_steps = target_steps
@@ -849,10 +863,18 @@ func _update_adaptive_resolution(delta: float) -> void:
 			if not is_auto_step and motion_adaptive and target_steps < base_steps and target_steps > 0:
 				step_sz = base_step_sz * (float(base_steps) / float(target_steps))
 			var lut_subs: int = int(active_display.get("lut_substeps", 1))
+
+			# Decouple lateral jitter: keep physical ray displacement constant during motion scaling
+			var base_lat_jitter: float = float(active_display.get("lateral_jitter", 1.0))
+			var lat_jitter: float = base_lat_jitter
+			if target_steps < base_steps and target_steps > 0:
+				lat_jitter = base_lat_jitter * (float(target_steps) / float(base_steps))
+
 			$SpecimenStage.apply_display({
 				"max_steps": target_steps,
 				"step_size": step_sz,
 				"lut_substeps": lut_subs,
+				"lateral_jitter": lat_jitter,
 			})
 		return
 
@@ -878,4 +900,3 @@ func _update_adaptive_resolution(delta: float) -> void:
 
 	var target_scale := lerpf(s_min, s_max, t)
 	vp.scaling_3d_scale = lerpf(vp.scaling_3d_scale, target_scale, clampf(10.0 * delta, 0.0, 1.0))
-
