@@ -138,15 +138,20 @@ func _finish_load(manifest: Dictionary, fetch: Callable) -> void:
 		var decode_span := spec_span * 0.25
 
 		var dl_callback := func(dl_fraction: float, downloaded: int, total: int) -> void:
-			var overall_ratio := spec_base + dl_fraction * dl_span
-			var label: String
-			if total > 0:
+			if dl_fraction >= 0.0:
+				var overall_ratio := spec_base + dl_fraction * dl_span
+				var label: String
+				if total > 0:
+					var dl_mb := float(downloaded) / 1048576.0
+					var tot_mb := float(total) / 1048576.0
+					label = "Downloading %s (%.1f / %.1f MB - %.0f%%)" % [spec_id, dl_mb, tot_mb, dl_fraction * 100.0]
+				else:
+					label = "Downloading %s (%.0f%%)" % [spec_id, dl_fraction * 100.0]
+				progress.emit(label, overall_ratio)
+			elif downloaded > 0:
 				var dl_mb := float(downloaded) / 1048576.0
-				var tot_mb := float(total) / 1048576.0
-				label = "Downloading %s (%.1f / %.1f MB - %.0f%%)" % [spec_id, dl_mb, tot_mb, dl_fraction * 100.0]
-			else:
-				label = "Downloading %s (%.0f%%)" % [spec_id, dl_fraction * 100.0]
-			progress.emit(label, overall_ratio)
+				var label := "Downloading %s (%.1f MB)" % [spec_id, dl_mb]
+				progress.emit(label, spec_base)
 
 		progress.emit("Downloading %s (0%%)" % [spec_id], spec_base)
 
@@ -228,33 +233,38 @@ func _http_get(url: String, on_progress: Callable = Callable()) -> Dictionary:
 	var request := make_request()
 	add_child(request)
 
-	var completed := false
-	var response_result: Array = []
-	request.request_completed.connect(func(res: int, code: int, headers: PackedStringArray, body: PackedByteArray):
-		completed = true
-		response_result = [res, code, headers, body]
-	)
-
 	var start_err := request.request(url)
 	if start_err != OK:
 		request.queue_free()
 		return {"error": "could not start request (error %d)" % [start_err]}
 
-	var tree := get_tree()
-	while not completed:
-		if on_progress.is_valid():
+	var response_result: Array = []
+	if not on_progress.is_valid():
+		response_result = await request.request_completed
+	else:
+		var done := [false]
+		request.request_completed.connect(func(res: int, code: int, headers: PackedStringArray, body: PackedByteArray):
+			done[0] = true
+			response_result = [res, code, headers, body]
+		)
+
+		var tree := get_tree()
+		while not done[0]:
 			var downloaded := request.get_downloaded_bytes()
 			var total := request.get_body_size()
-			if total > 0 and downloaded >= 0:
-				var fraction := clampf(float(downloaded) / float(total), 0.0, 1.0)
-				on_progress.call(fraction, downloaded, total)
-		if tree != null:
-			await tree.process_frame
-		else:
-			break
+			if downloaded > 0:
+				if total > 0:
+					var fraction := clampf(float(downloaded) / float(total), 0.0, 1.0)
+					on_progress.call(fraction, downloaded, total)
+				else:
+					on_progress.call(-1.0, downloaded, -1)
+			if tree != null:
+				await tree.process_frame
+			else:
+				break
 
-	if not completed:
-		response_result = await request.request_completed
+		if not done[0]:
+			response_result = await request.request_completed
 
 	request.queue_free()
 
