@@ -349,7 +349,7 @@ func _fetch_web(url: String, on_progress: Callable = Callable()) -> Dictionary:
 		cbs.append(progress_cb)
 	_active_js_callbacks.append_array(cbs)
 
-	window.call("_ascribe_streaming_fetch", url, progress_cb, success_cb, error_cb)
+	window._ascribe_streaming_fetch(url, progress_cb, success_cb, error_cb)
 
 	var tree := get_tree()
 	while result_box.is_empty():
