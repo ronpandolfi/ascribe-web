@@ -151,7 +151,9 @@ func _finish_load(manifest: Dictionary, fetch: Callable) -> void:
 			elif downloaded > 0:
 				var dl_mb := float(downloaded) / 1048576.0
 				var label := "Downloading %s (%.1f MB)" % [spec_id, dl_mb]
-				progress.emit(label, spec_base)
+				var estimated_frac := 1.0 - exp(-float(downloaded) / (12.0 * 1048576.0))
+				var overall_ratio := spec_base + estimated_frac * dl_span * 0.95
+				progress.emit(label, overall_ratio)
 
 		progress.emit("Downloading %s (0%%)" % [spec_id], spec_base)
 
@@ -225,11 +227,127 @@ func make_request() -> HTTPRequest:
 	return request
 
 
-## Performs a single HTTPRequest GET, returning {"body": PackedByteArray} on 2xx, or
-## {"error": String} otherwise. Always relative-safe: the caller passes a same-origin URL.
-## When `on_progress` is provided, it is called with `(ratio: float, downloaded: int, total: int)`
-## as bytes arrive.
+var _active_js_callbacks: Array[JavaScriptObject] = []
+
+
+func _ensure_js_fetch_helper() -> void:
+	if not OS.has_feature("web"):
+		return
+	JavaScriptBridge.eval("""
+		if (!window._ascribe_streaming_fetch) {
+			window._ascribe_streaming_fetch = async function(url, onProgress, onSuccess, onError) {
+				try {
+					const response = await fetch(url);
+					if (!response.ok) {
+						if (onError) onError('HTTP ' + response.status);
+						return;
+					}
+					const headerLength = response.headers.get('Content-Length');
+					const contentLength = headerLength ? parseInt(headerLength, 10) : -1;
+					const reader = response.body.getReader();
+					let received = 0;
+					const chunks = [];
+					while (true) {
+						const { done, value } = await reader.read();
+						if (done) break;
+						chunks.push(value);
+						received += value.length;
+						if (onProgress) {
+							onProgress(received, contentLength);
+						}
+					}
+					const combined = new Uint8Array(received);
+					let offset = 0;
+					for (const chunk of chunks) {
+						combined.set(chunk, offset);
+						offset += chunk.length;
+					}
+					if (onSuccess) {
+						onSuccess(combined);
+					}
+				} catch (err) {
+					if (onError) {
+						onError(err.message || String(err));
+					}
+				}
+			};
+		}
+	""", true)
+
+
+func _fetch_web(url: String, on_progress: Callable = Callable()) -> Dictionary:
+	_ensure_js_fetch_helper()
+
+	var window = JavaScriptBridge.get_interface("window")
+	if window == null or not window.has_method("_ascribe_streaming_fetch"):
+		return {"error": "js_bridge_unavailable"}
+
+	var result_box: Array = []
+	var progress_cb: JavaScriptObject = null
+	if on_progress.is_valid():
+		progress_cb = JavaScriptBridge.create_callback(func(args: Array) -> void:
+			if args.size() >= 2:
+				var downloaded: int = int(args[0])
+				var total: int = int(args[1])
+				if total > 0:
+					var fraction := clampf(float(downloaded) / float(total), 0.0, 1.0)
+					on_progress.call(fraction, downloaded, total)
+				else:
+					on_progress.call(-1.0, downloaded, -1)
+		)
+
+	var success_cb: JavaScriptObject = JavaScriptBridge.create_callback(func(args: Array) -> void:
+		if args.size() > 0 and JavaScriptBridge.is_js_buffer(args[0]):
+			var bytes: PackedByteArray = JavaScriptBridge.js_buffer_to_packed_byte_array(args[0])
+			result_box.append({"body": bytes})
+		else:
+			result_box.append({"error": "invalid buffer received from browser fetch"})
+	)
+
+	var error_cb: JavaScriptObject = JavaScriptBridge.create_callback(func(args: Array) -> void:
+		var err_msg: String = str(args[0]) if args.size() > 0 else "unknown fetch error"
+		result_box.append({"error": err_msg})
+	)
+
+	var cbs: Array[JavaScriptObject] = [success_cb, error_cb]
+	if progress_cb != null:
+		cbs.append(progress_cb)
+	_active_js_callbacks.append_array(cbs)
+
+	window.call("_ascribe_streaming_fetch", url, progress_cb, success_cb, error_cb)
+
+	var tree := get_tree()
+	while result_box.is_empty():
+		if tree != null:
+			await tree.process_frame
+		else:
+			break
+
+	for cb in cbs:
+		_active_js_callbacks.erase(cb)
+
+	if result_box.is_empty():
+		return {"error": "fetch timed out or aborted"}
+
+	var outcome: Dictionary = result_box[0]
+	if outcome.has("body") and on_progress.is_valid():
+		var bsize: int = outcome["body"].size()
+		on_progress.call(1.0, bsize, bsize)
+
+	return outcome
+
+
+## Performs a single HTTP GET, using streaming browser fetch on the Web platform,
+## and HTTPRequest on desktop/headless native builds.
 func _http_get(url: String, on_progress: Callable = Callable()) -> Dictionary:
+	if OS.has_feature("web"):
+		var web_res: Dictionary = await _fetch_web(url, on_progress)
+		if not web_res.has("error") or web_res["error"] != "js_bridge_unavailable":
+			return web_res
+	return await _http_get_native(url, on_progress)
+
+
+func _http_get_native(url: String, on_progress: Callable = Callable()) -> Dictionary:
 	var request := make_request()
 	add_child(request)
 
