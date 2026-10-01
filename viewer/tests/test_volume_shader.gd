@@ -180,3 +180,10 @@ func test_coarse_occupancy_grid_uniforms_and_logic() -> void:
 	assert_str(src).contains("uniform float coarse_leap_stride = 3.0;")
 	assert_str(src).contains("if (use_coarse_grid && total_opacity == 0.0)")
 	assert_str(src).contains("t += march_step * coarse_leap_stride;")
+
+func test_precomputed_normal_volume_uniforms_and_logic() -> void:
+	var src := _source()
+	assert_str(src).contains("uniform sampler3D texture_normals")
+	assert_str(src).contains("uniform bool use_precomputed_normals = false;")
+	assert_str(src).contains("if (use_precomputed_normals)")
+	assert_str(src).contains("vec3 enc = texture(texture_normals, tex_sample_pt).rgb;")

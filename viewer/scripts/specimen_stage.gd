@@ -74,6 +74,10 @@ func _stage_volume(vol: WebVolumetricData, display: Dictionary) -> void:
 	if coarse_tex == null:
 		coarse_tex = _get_default_coarse_grid()
 	mat.set_shader_parameter("coarse_occupancy_grid", coarse_tex)
+	var norm_tex: Texture3D = vol.get_normal_texture() if vol.has_method("get_normal_texture") else null
+	if norm_tex == null:
+		norm_tex = _get_default_normal_texture()
+	mat.set_shader_parameter("texture_normals", norm_tex)
 	# Half-extents of the staged box; keeps the raymarch's ray-box intersection and texture
 	# coordinate normalization matched to the actual (possibly non-cubic) box, not a unit cube.
 	mat.set_shader_parameter("box_extents", box_size / 2.0)
@@ -151,6 +155,8 @@ func _apply_display_to_material(mat: ShaderMaterial, display: Dictionary) -> voi
 		mat.set_shader_parameter("lut_substeps", int(display["lut_substeps"]))
 	if display.has("shading_enabled"):
 		mat.set_shader_parameter("shading_enabled", bool(display["shading_enabled"]))
+	if display.has("use_precomputed_normals"):
+		mat.set_shader_parameter("use_precomputed_normals", bool(display["use_precomputed_normals"]))
 	if display.has("use_preintegrated_lut"):
 		mat.set_shader_parameter("use_preintegrated_lut", bool(display["use_preintegrated_lut"]))
 	if display.has("saturation_cutoff"):
@@ -321,3 +327,17 @@ func _get_default_coarse_grid() -> Texture3D:
 		tex.create(Image.FORMAT_L8, 2, 2, 2, false, imgs)
 		_default_coarse_grid = tex
 	return _default_coarse_grid
+
+var _default_normal_texture: Texture3D = null
+
+func _get_default_normal_texture() -> Texture3D:
+	if _default_normal_texture == null:
+		var imgs: Array[Image] = []
+		for z in range(2):
+			var img := Image.create(2, 2, false, Image.FORMAT_RGBA8)
+			img.fill(Color(0.5, 0.5, 1.0, 1.0))
+			imgs.append(img)
+		var tex := ImageTexture3D.new()
+		tex.create(Image.FORMAT_RGBA8, 2, 2, 2, false, imgs)
+		_default_normal_texture = tex
+	return _default_normal_texture

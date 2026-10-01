@@ -39,6 +39,7 @@ var _advanced_open := false
 @onready var _search_stride_label: Label = $VBox/AdvancedScroll/AdvancedVBox/SearchStrideLabel
 @onready var _search_stride_slider: HSlider = $VBox/AdvancedScroll/AdvancedVBox/SearchStride
 @onready var _shading_check: CheckBox = $VBox/AdvancedScroll/AdvancedVBox/ShadingEnabled
+@onready var _precomputed_normals_check: CheckBox = $VBox/AdvancedScroll/AdvancedVBox/PrecomputedNormals
 @onready var _early_cutoff_label: Label = $VBox/AdvancedScroll/AdvancedVBox/EarlyCutoffLabel
 @onready var _early_cutoff_slider: HSlider = $VBox/AdvancedScroll/AdvancedVBox/EarlyCutoff
 
@@ -150,6 +151,7 @@ func _ready() -> void:
 		_emit_changed()
 	)
 	_shading_check.toggled.connect(func(_p): _emit_changed())
+	_precomputed_normals_check.toggled.connect(func(_p): _emit_changed())
 
 	_early_cutoff_slider.value_changed.connect(func(v):
 		_update_label(_early_cutoff_label, "Early Ray Cutoff: %.3f" % v)
@@ -281,6 +283,7 @@ func get_display() -> Dictionary:
 		"opacity_adaptive_stepping": _opacity_adaptive_check.button_pressed if _opacity_adaptive_check else false,
 		"opacity_search_stride": float(_search_stride_slider.value if _search_stride_slider else 2.0),
 		"shading_enabled": _shading_check.button_pressed if _shading_check else false,
+		"use_precomputed_normals": _precomputed_normals_check.button_pressed if _precomputed_normals_check else false,
 		"saturation_cutoff": float(_early_cutoff_slider.value if _early_cutoff_slider else 0.995),
 		"ess_enabled": ess_on,
 		"ess_stride": ess_s,
@@ -345,6 +348,8 @@ func set_display(display: Dictionary) -> void:
 		_update_label(_search_stride_label, "Search Leap Stride: %.1fx" % ss)
 	if display.has("shading_enabled") and _shading_check:
 		_shading_check.set_pressed_no_signal(bool(display["shading_enabled"]))
+	if display.has("use_precomputed_normals") and _precomputed_normals_check:
+		_precomputed_normals_check.set_pressed_no_signal(bool(display["use_precomputed_normals"]))
 	if display.has("saturation_cutoff") and _early_cutoff_slider:
 		var c := float(display["saturation_cutoff"])
 		_early_cutoff_slider.set_value_no_signal(c)

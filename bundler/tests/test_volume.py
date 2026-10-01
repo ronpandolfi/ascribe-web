@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from ascribe_bundle.volume import convert_volume, load_volume
+from ascribe_bundle.volume import compute_normal_volume, convert_volume, load_volume
 
 
 def test_load_npy(tmp_path: Path):
@@ -154,3 +154,16 @@ def test_downsampling_handles_non_multiple_shapes():
     out = convert_volume(arr, "float16", max_dim=5)
     # ceil(10/5) = 2 -> every axis is halved, rounding up on ragged edges.
     assert out.shape == (5, 4, 3)
+
+def test_compute_normal_volume_shape_and_range():
+    vol = np.zeros((8, 8, 8), dtype=np.float32)
+    # Put a solid sphere in the middle
+    z, y, x = np.ogrid[:8, :8, :8]
+    dist = np.sqrt((x - 3.5)**2 + (y - 3.5)**2 + (z - 3.5)**2)
+    vol[dist < 3.0] = 1.0
+
+    normals = compute_normal_volume(vol)
+    assert normals.shape == (8, 8, 8, 4)
+    assert normals.dtype == np.uint8
+    assert normals.min() >= 0
+    assert normals.max() <= 255

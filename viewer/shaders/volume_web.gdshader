@@ -31,6 +31,8 @@ uniform bool opacity_adaptive_stepping = false;
 uniform float opacity_search_stride = 2.0;
 
 uniform sampler3D texture_volume : source_color, filter_linear, repeat_disable;
+uniform sampler3D texture_normals : filter_linear, repeat_disable;
+uniform bool use_precomputed_normals = false;
 uniform sampler2D gradient : filter_linear, repeat_disable;
 // 2D pre-integrated transfer function LUT: maps (front_density^gamma, back_density^gamma)
 // to integrated continuous (RGB, Opacity). Replaces dynamic sub-stepping loops with 1 fetch.
@@ -398,7 +400,13 @@ void fragment() {
 
 		vec3 shade_scale = vec3(1.0);
 		if (shading_enabled) {
-			vec3 n = density_normal(tex_sample_pt);
+			vec3 n;
+			if (use_precomputed_normals) {
+				vec3 enc = texture(texture_normals, tex_sample_pt).rgb;
+				n = enc * 2.0 - 1.0;
+			} else {
+				n = density_normal(tex_sample_pt);
+			}
 			if (dot(n, n) > 1e-8) {
 				float diffuse = max(dot(normalize(n), normalize(light_dir)), 0.0);
 				shade_scale = vec3(ambient + (1.0 - ambient) * diffuse);

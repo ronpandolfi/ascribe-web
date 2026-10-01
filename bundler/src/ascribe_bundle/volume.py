@@ -136,3 +136,32 @@ def convert_volume(
         scale = 255.0 / (hi - lo) if hi > lo else 0.0
         return ((a - lo) * scale).astype(np.uint8)
     return arr.astype(np.float16)
+
+def compute_normal_volume(arr: np.ndarray) -> np.ndarray:
+    """Computes normalized surface gradients (normals) for a 3D scalar volume.
+
+    Returns an RGBA volume of shape (*arr.shape, 4) in uint8 where:
+    RGB represents the normalized normal vector mapped to [0, 255] ((n + 1.0) * 0.5 * 255).
+    A represents the scalar density normalized to [0, 255].
+    """
+    if arr.ndim != 3:
+        raise ValueError(f"expected a 3D volume, got shape {arr.shape}")
+    a = arr.astype(np.float32)
+    gz, gy, gx = np.gradient(a)
+    nx = -gx
+    ny = -gy
+    nz = -gz
+    norm = np.sqrt(nx**2 + ny**2 + nz**2)
+    norm = np.maximum(norm, 1e-6)
+    nx /= norm
+    ny /= norm
+    nz /= norm
+
+    r = np.clip((nx + 1.0) * 0.5 * 255.0, 0, 255).astype(np.uint8)
+    g = np.clip((ny + 1.0) * 0.5 * 255.0, 0, 255).astype(np.uint8)
+    b = np.clip((nz + 1.0) * 0.5 * 255.0, 0, 255).astype(np.uint8)
+
+    lo, hi = float(a.min()), float(a.max())
+    density = np.clip((a - lo) / (hi - lo) * 255.0 if hi > lo else 0.0, 0, 255).astype(np.uint8)
+
+    return np.stack([r, g, b, density], axis=-1)

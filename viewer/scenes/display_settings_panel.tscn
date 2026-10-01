@@ -134,6 +134,11 @@ value = 2.0
 layout_mode = 2
 text = "Surface Shading & Normals"
 
+[node name="PrecomputedNormals" type="CheckBox" parent="VBox/AdvancedScroll/AdvancedVBox"]
+layout_mode = 2
+button_pressed = false
+text = "Precomputed Normals (Fast Shading)"
+
 [node name="EarlyCutoffLabel" type="Label" parent="VBox/AdvancedScroll/AdvancedVBox"]
 layout_mode = 2
 text = "Early Ray Cutoff: 0.995"

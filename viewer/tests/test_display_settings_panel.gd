@@ -130,6 +130,7 @@ func test_set_display_sets_advanced_properties_without_emitting() -> void:
 		"opacity_search_stride": 3.0,
 		"use_coarse_grid": false,
 		"coarse_leap_stride": 4.0,
+		"use_precomputed_normals": true,
 	})
 
 	var d := panel.get_display()
@@ -156,4 +157,5 @@ func test_set_display_sets_advanced_properties_without_emitting() -> void:
 	assert_float(d["opacity_search_stride"]).is_equal_approx(3.0, 0.01)
 	assert_that(d["use_coarse_grid"]).is_false()
 	assert_float(d["coarse_leap_stride"]).is_equal_approx(4.0, 0.01)
+	assert_that(d["use_precomputed_normals"]).is_true()
 
