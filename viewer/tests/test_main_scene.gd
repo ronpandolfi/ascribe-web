@@ -460,3 +460,99 @@ func test_story_pinning_specimen_updates_both_panels() -> void:
 	assert_float(vr_panel.get_display()["opacity"]).is_equal_approx(0.5, 0.01)
 	assert_int(vr_panel.get_display()["max_steps"]).is_equal(200)
 
+
+
+func test_specimen_motion_throttles_steps_in_xr() -> void:
+	var main := await _make_main()
+	var vp := main.get_viewport()
+	var stage: Node3D = main.get_node("SpecimenStage")
+	var xr_cam: XRCamera3D = main.get_node("XROrigin3D/XRCamera3D")
+
+	main._on_session_started()
+	vp.use_xr = true
+
+	# Stationary initial state
+	xr_cam.global_position = stage.global_position + Vector3(0, 0, 1.0)
+	xr_cam.global_basis = Basis.IDENTITY
+	main._last_xr_cam_rot = xr_cam.global_basis
+	main._last_xr_cam_pos = xr_cam.global_position
+	main._last_stage_rot = stage.global_basis.orthonormalized()
+	main._last_stage_pos = stage.global_position
+	main._smoothed_angular_speed = 0.0
+	main._update_adaptive_resolution(0.016)
+	assert_that(main._current_xr_adaptive_steps).is_equal(Quality.XR_STEPS)
+
+	# Specimen rotation with stationary camera (e.g. rotating specimen 90 deg in 16ms)
+	stage.global_basis = Basis(Vector3.UP, deg_to_rad(90.0))
+	main._update_adaptive_resolution(0.016)
+	assert_that(main._current_xr_adaptive_steps).is_less_equal(48)
+
+	# Specimen stops rotating
+	main._last_stage_rot = stage.global_basis.orthonormalized()
+	main._update_adaptive_resolution(0.5)
+	assert_that(main._current_xr_adaptive_steps).is_equal(Quality.XR_STEPS)
+
+	# Specimen translation with stationary camera (e.g. moving specimen 0.5m in 16ms)
+	stage.global_position += Vector3(0.5, 0.0, 0.0)
+	main._update_adaptive_resolution(0.016)
+	assert_that(main._current_xr_adaptive_steps).is_less_equal(48)
+
+	# Specimen stops moving
+	main._last_stage_pos = stage.global_position
+	main._update_adaptive_resolution(0.5)
+	assert_that(main._current_xr_adaptive_steps).is_equal(Quality.XR_STEPS)
+
+	main._on_session_ended()
+	vp.use_xr = false
+
+
+func test_motion_adaptive_scales_steps_and_step_size_when_auto_step_disabled() -> void:
+	var main := await _make_main()
+	var vr_panel: DisplaySettingsPanel = main.get_node("XROrigin3D/PanelViewport/DisplaySettingsPanel")
+	var stage: SpecimenStage = main.get_node("SpecimenStage")
+	var vp := main.get_viewport()
+
+	var mesh_inst := MeshInstance3D.new()
+	mesh_inst.mesh = BoxMesh.new()
+	var mat := ShaderMaterial.new()
+	mat.shader = SpecimenStage.VOLUME_SHADER
+	mesh_inst.set_surface_override_material(0, mat)
+	stage.add_child(mesh_inst)
+
+	vr_panel.set_display({
+		"max_steps": 128,
+		"step_size": 0.0020,
+		"auto_step_size": false,
+		"lut_substeps": 1,
+		"adaptive_steps": false,
+		"motion_adaptive_steps": true,
+		"motion_step_floor": 48,
+	})
+	vr_panel._emit_changed()
+
+	main._on_session_started()
+	vp.use_xr = true
+	main._current_xr_adaptive_steps = -1
+
+	# Stationary frame
+	main._update_adaptive_resolution(0.016)
+	assert_int(mat.get_shader_parameter("max_steps")).is_equal(128)
+	assert_float(mat.get_shader_parameter("step_size")).is_equal_approx(0.0020, 0.0001)
+
+	# Motion frame: rotate specimen rapidly
+	stage.global_basis = Basis(Vector3.UP, deg_to_rad(90.0))
+	main._update_adaptive_resolution(0.016)
+
+	var throttled_steps: int = int(mat.get_shader_parameter("max_steps"))
+	assert_that(throttled_steps).is_less_equal(48)
+	var expected_step_sz := 0.0020 * (128.0 / float(throttled_steps))
+	assert_float(mat.get_shader_parameter("step_size")).is_equal_approx(expected_step_sz, 0.0001)
+
+	# Motion stops: recover to full quality
+	main._last_stage_rot = stage.global_basis.orthonormalized()
+	main._update_adaptive_resolution(0.5)
+	assert_int(mat.get_shader_parameter("max_steps")).is_equal(128)
+	assert_float(mat.get_shader_parameter("step_size")).is_equal_approx(0.0020, 0.0001)
+
+	main._on_session_ended()
+	vp.use_xr = false

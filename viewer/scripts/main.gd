@@ -38,6 +38,8 @@ const XR_SCALING_3D_SCALE := 1.0
 var _current_xr_adaptive_steps: int = -1
 var _last_xr_cam_pos: Vector3 = Vector3.ZERO
 var _last_xr_cam_rot: Basis = Basis.IDENTITY
+var _last_stage_pos: Vector3 = Vector3.ZERO
+var _last_stage_rot: Basis = Basis.IDENTITY
 var _smoothed_angular_speed: float = 0.0
 
 
@@ -57,6 +59,9 @@ func _ready() -> void:
 	get_tree().root.size_changed.connect(_on_window_size_changed)
 	_update_fullscreen_button_layout()
 	_update_fullscreen_button()
+	var stage_node: Node3D = $SpecimenStage
+	_last_stage_pos = stage_node.global_position
+	_last_stage_rot = stage_node.global_basis.orthonormalized()
 
 	_loader = BundleLoader.new()
 	add_child(_loader)
@@ -226,6 +231,8 @@ func _wire_story_panels() -> void:
 			return
 		var spec_display := _display_for_specimen(specimen_id)
 		$SpecimenStage.stage(specimen_id, data, spec_display)
+		_last_stage_pos = $SpecimenStage.global_position
+		_last_stage_rot = $SpecimenStage.global_basis.orthonormalized()
 		_current_display.merge(spec_display, true)
 		$CanvasLayer/DisplaySettingsPanel.set_display(spec_display)
 		$XROrigin3D/PanelViewport/DisplaySettingsPanel.set_display(spec_display)
@@ -449,6 +456,9 @@ func _on_loaded(manifest: Dictionary, specimens: Dictionary) -> void:
 				"step_size", Quality.step_size_for(int(spec_display["max_steps"])))),
 		}
 	$SpecimenStage.stage(spec_id, data, spec_display)
+	var stage_node: Node3D = $SpecimenStage
+	_last_stage_pos = stage_node.global_position
+	_last_stage_rot = stage_node.global_basis.orthonormalized()
 	# Show the bundle's own gamma/opacity on the panels. Without this the sliders sit at their
 	# defaults while the render uses the manifest's values -- the panel lies about the current
 	# state, and in edit mode saving would write the slider defaults over a tuned manifest.
@@ -511,6 +521,8 @@ func _on_session_started() -> void:
 	$CanvasLayer/Fullscreen.visible = false
 	_last_xr_cam_rot = $XROrigin3D/XRCamera3D.global_basis
 	_last_xr_cam_pos = $XROrigin3D/XRCamera3D.global_position
+	_last_stage_rot = $SpecimenStage.global_basis.orthonormalized()
+	_last_stage_pos = $SpecimenStage.global_position
 	_smoothed_angular_speed = 0.0
 	_current_xr_adaptive_steps = -1
 	_apply_quality_tier()
@@ -529,6 +541,8 @@ func _on_session_ended() -> void:
 	$CanvasLayer/Fullscreen.visible = true
 	_current_xr_adaptive_steps = -1
 	_smoothed_angular_speed = 0.0
+	_last_stage_rot = $SpecimenStage.global_basis.orthonormalized()
+	_last_stage_pos = $SpecimenStage.global_position
 	_apply_quality_tier()
 
 
@@ -707,19 +721,35 @@ func _update_adaptive_resolution(delta: float) -> void:
 		if adaptive_xr:
 			target_steps = int(round(lerpf(float(min_xr_steps), float(base_steps), t)))
 
-		# Motion-adaptive quality throttling: during head rotation or rapid movement,
-		# reduce raymarching steps down toward motion_step_floor to prevent dropping frames.
+		# Motion-adaptive quality throttling: during head rotation, rapid head movement,
+		# or moving/rotating the specimen stage, reduce raymarching steps down toward
+		# motion_step_floor to prevent dropping frames.
 		if delta > 0.0001:
-			var cur_pos := cam.global_position
-			var cur_basis := cam.global_basis
-			var rot_delta := cur_basis.inverse() * _last_xr_cam_rot
-			var rot_angle := rot_delta.get_rotation_quaternion().get_angle()
-			var angular_speed := rad_to_deg(rot_angle) / delta
-			_last_xr_cam_pos = cur_pos
-			_last_xr_cam_rot = cur_basis
+			var cur_cam_pos := cam.global_position
+			var cur_cam_basis := cam.global_basis
+			var cam_rot_delta := cur_cam_basis.inverse() * _last_xr_cam_rot
+			var cam_rot_angle := cam_rot_delta.get_rotation_quaternion().get_angle()
+			var cam_angular_speed := rad_to_deg(cam_rot_angle) / delta
+			_last_xr_cam_pos = cur_cam_pos
+			_last_xr_cam_rot = cur_cam_basis
+
+			var stage_node: Node3D = $SpecimenStage
+			var cur_stage_pos: Vector3 = stage_node.global_position
+			var cur_stage_basis: Basis = stage_node.global_basis.orthonormalized()
+			var stage_rot_delta: Basis = cur_stage_basis.inverse() * _last_stage_rot
+			var stage_rot_angle: float = stage_rot_delta.get_rotation_quaternion().get_angle()
+			var stage_angular_speed: float = rad_to_deg(stage_rot_angle) / delta
+			var stage_linear_dist: float = cur_stage_pos.distance_to(_last_stage_pos)
+			var stage_linear_speed: float = stage_linear_dist / delta
+			var stage_equiv_speed: float = rad_to_deg(stage_linear_speed / maxf(dist_to_box, 0.25))
+			_last_stage_pos = cur_stage_pos
+			_last_stage_rot = cur_stage_basis
+
+			var total_stage_speed := stage_angular_speed + stage_equiv_speed
+			var total_motion_speed := maxf(cam_angular_speed, total_stage_speed)
 
 			# Deadband of 35.0 deg/s filters out WebXR sensor noise and natural micro-tremor
-			var effective_speed := angular_speed if angular_speed > 35.0 else 0.0
+			var effective_speed := total_motion_speed if total_motion_speed > 35.0 else 0.0
 			if effective_speed > _smoothed_angular_speed:
 				_smoothed_angular_speed = effective_speed
 			else:
@@ -740,7 +770,10 @@ func _update_adaptive_resolution(delta: float) -> void:
 		if target_steps != _current_xr_adaptive_steps:
 			_current_xr_adaptive_steps = target_steps
 			var is_auto_step: bool = bool(active_display.get("auto_step_size", false))
-			var step_sz: float = float(Quality.step_size_for(target_steps) if is_auto_step else active_display.get("step_size", 0.0025))
+			var base_step_sz: float = float(Quality.step_size_for(target_steps) if is_auto_step else active_display.get("step_size", 0.0025))
+			var step_sz: float = base_step_sz
+			if not is_auto_step and motion_adaptive and target_steps < base_steps and target_steps > 0:
+				step_sz = base_step_sz * (float(base_steps) / float(target_steps))
 			var lut_subs: int = int(active_display.get("lut_substeps", 1))
 			$SpecimenStage.apply_display({
 				"max_steps": target_steps,
