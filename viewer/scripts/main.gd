@@ -180,6 +180,7 @@ func _wire_xr_grab() -> void:
 	pointer.panel_quad = $XROrigin3D/PanelQuad
 	pointer.panel_viewport = $XROrigin3D/PanelViewport
 	pointer.laser_dot = $XROrigin3D/LaserDot
+	$XROrigin3D/PanelQuad.visible = false
 
 	# Story panel is removed from XR mode per user request
 	var story_pointer := $XROrigin3D/StoryPanelPointer
@@ -509,6 +510,7 @@ func _exit_vr() -> void:
 	get_viewport().scaling_3d_scale = 1.0
 	$Camera3D.current = true
 	$XROrigin3D/XRCamera3D.current = false
+	$XROrigin3D/PanelQuad.visible = false
 	$XROrigin3D/PanelViewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	$XROrigin3D/StoryViewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	$CanvasLayer.visible = true
@@ -521,6 +523,7 @@ func _on_session_started() -> void:
 	get_viewport().scaling_3d_scale = XR_SCALING_3D_SCALE
 	$XROrigin3D/XRCamera3D.current = true
 	$Camera3D.current = false
+	$XROrigin3D/PanelQuad.visible = true
 	$XROrigin3D/PanelViewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	$XROrigin3D/StoryViewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	$XROrigin3D/StoryQuad.visible = false
@@ -544,6 +547,7 @@ func _on_session_ended() -> void:
 	get_viewport().scaling_3d_scale = 1.0
 	$Camera3D.current = true
 	$XROrigin3D/XRCamera3D.current = false
+	$XROrigin3D/PanelQuad.visible = false
 	$XROrigin3D/PanelViewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	$XROrigin3D/StoryViewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	$CanvasLayer.visible = true

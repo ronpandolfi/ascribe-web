@@ -105,3 +105,27 @@ func test_handle_toggle_toggles_quad_visibility() -> void:
 	pointer.left_controller.set_meta("by_pressed", true)
 	# When by_pressed transitions from false to true, it toggles visibility
 	pointer._handle_toggle()
+
+
+func test_physics_process_shows_panel_quad_on_xr_start() -> void:
+	var fixture := _create_test_pointer()
+	var parent: Node3D = fixture["parent"]
+	var pointer: Node3D = fixture["pointer"]
+	var quad: MeshInstance3D = fixture["quad"]
+	auto_free(parent)
+
+	# In non-XR, quad is hidden
+	pointer.get_viewport().use_xr = false
+	pointer._physics_process(0.016)
+	assert_bool(quad.visible).is_false()
+
+	# Entering XR defaults quad to visible
+	pointer.get_viewport().use_xr = true
+	pointer._physics_process(0.016)
+	assert_bool(quad.visible).is_true()
+
+	# Leaving XR hides it again
+	pointer.get_viewport().use_xr = false
+	pointer._physics_process(0.016)
+	assert_bool(quad.visible).is_false()
+

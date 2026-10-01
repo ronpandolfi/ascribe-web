@@ -21,6 +21,7 @@ var _prev_by_pressed: bool = false
 var _active_controller: XRController3D = null
 var _prev_active_trigger: bool = false
 var _last_uv := Vector2(0.5, 0.5)
+var _was_xr: bool = false
 
 
 func _ready() -> void:
@@ -46,13 +47,19 @@ func _physics_process(_delta: float) -> void:
 	if right_controller == null and left_controller == null:
 		return
 
-	if not get_viewport().use_xr:
+	var is_xr: bool = get_viewport().use_xr
+	if not is_xr:
+		_was_xr = false
 		panel_quad.visible = false
 		if laser_dot:
 			laser_dot.visible = false
 		if laser_dot_left:
 			laser_dot_left.visible = false
 		return
+
+	if not _was_xr:
+		_was_xr = true
+		panel_quad.visible = true
 
 	_handle_toggle()
 

@@ -169,11 +169,13 @@ func test_xr_session_toggles_scaling_and_cameras() -> void:
 	var cam_xr: XRCamera3D = main.get_node("XROrigin3D/XRCamera3D")
 	var panel_vp: SubViewport = main.get_node("XROrigin3D/PanelViewport")
 	var story_vp: SubViewport = main.get_node("XROrigin3D/StoryViewport")
+	var panel_quad: MeshInstance3D = main.get_node("XROrigin3D/PanelQuad")
 
 	# Initial desktop state (adaptive scaling starts near 1.0)
 	assert_float(vp.scaling_3d_scale).is_greater(0.8)
 	assert_bool(cam_desktop.current).is_true()
 	assert_bool(cam_xr.current).is_false()
+	assert_bool(panel_quad.visible).is_false()
 	assert_that(panel_vp.render_target_update_mode).is_equal(SubViewport.UPDATE_DISABLED)
 	assert_that(story_vp.render_target_update_mode).is_equal(SubViewport.UPDATE_DISABLED)
 
@@ -182,6 +184,7 @@ func test_xr_session_toggles_scaling_and_cameras() -> void:
 	assert_float(vp.scaling_3d_scale).is_equal_approx(main.XR_SCALING_3D_SCALE, 0.001)
 	assert_bool(cam_desktop.current).is_false()
 	assert_bool(cam_xr.current).is_true()
+	assert_bool(panel_quad.visible).is_true()
 	assert_that(panel_vp.render_target_update_mode).is_equal(SubViewport.UPDATE_ALWAYS)
 	assert_that(story_vp.render_target_update_mode).is_equal(SubViewport.UPDATE_DISABLED)
 
@@ -190,6 +193,7 @@ func test_xr_session_toggles_scaling_and_cameras() -> void:
 	assert_float(vp.scaling_3d_scale).is_greater(0.8)
 	assert_bool(cam_desktop.current).is_true()
 	assert_bool(cam_xr.current).is_false()
+	assert_bool(panel_quad.visible).is_false()
 	assert_that(panel_vp.render_target_update_mode).is_equal(SubViewport.UPDATE_DISABLED)
 	assert_that(story_vp.render_target_update_mode).is_equal(SubViewport.UPDATE_DISABLED)
 
