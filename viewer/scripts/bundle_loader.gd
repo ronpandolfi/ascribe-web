@@ -130,16 +130,17 @@ func _finish_load(manifest: Dictionary, fetch: Callable) -> void:
 		var rel_path: String = spec.get("data", "")
 
 		# Allocate a slice of total [0.05, 1.0] for this specimen:
-		# Download: 75% of the specimen's time
-		# Decode:   25% of the specimen's time
+		# Download: 90% of specimen progress (network transmission)
+		# Decode:   10% of specimen progress (texture/mesh synthesis)
 		var spec_base := 0.05 + 0.95 * (float(i) / float(total_specimens))
 		var spec_span := 0.95 / float(total_specimens)
-		var dl_span := spec_span * 0.75
-		var decode_span := spec_span * 0.25
+		var dl_span := spec_span * 0.90
+		var decode_span := spec_span * 0.10
 
+		var current_spec_ratio := spec_base
 		var dl_callback := func(dl_fraction: float, downloaded: int, total: int) -> void:
 			if dl_fraction >= 0.0:
-				var overall_ratio := spec_base + dl_fraction * dl_span
+				current_spec_ratio = spec_base + dl_fraction * dl_span
 				var label: String
 				if total > 0:
 					var dl_mb := float(downloaded) / 1048576.0
@@ -147,13 +148,14 @@ func _finish_load(manifest: Dictionary, fetch: Callable) -> void:
 					label = "Downloading %s (%.1f / %.1f MB - %.0f%%)" % [spec_id, dl_mb, tot_mb, dl_fraction * 100.0]
 				else:
 					label = "Downloading %s (%.0f%%)" % [spec_id, dl_fraction * 100.0]
-				progress.emit(label, overall_ratio)
+				progress.emit(label, current_spec_ratio)
 			elif downloaded > 0:
 				var dl_mb := float(downloaded) / 1048576.0
 				var label := "Downloading %s (%.1f MB)" % [spec_id, dl_mb]
-				var estimated_frac := 1.0 - exp(-float(downloaded) / (12.0 * 1048576.0))
-				var overall_ratio := spec_base + estimated_frac * dl_span * 0.95
-				progress.emit(label, overall_ratio)
+				var dynamic_scale := maxf(16.0 * 1048576.0, float(downloaded) * 1.5)
+				var estimated_frac := clampf(1.0 - exp(-float(downloaded) / dynamic_scale), 0.0, 0.95)
+				current_spec_ratio = spec_base + estimated_frac * dl_span
+				progress.emit(label, current_spec_ratio)
 
 		progress.emit("Downloading %s (0%%)" % [spec_id], spec_base)
 
@@ -163,14 +165,16 @@ func _finish_load(manifest: Dictionary, fetch: Callable) -> void:
 			return
 
 		var body: PackedByteArray = fetched["body"]
-		var decode_base := spec_base + dl_span
+		var decode_start := maxf(current_spec_ratio, spec_base + dl_span)
+		var spec_target := spec_base + spec_span
+		var decode_remaining := maxf(spec_target - decode_start, 0.001)
 
 		var decode_callback := func(dec_fraction: float) -> void:
-			var overall_ratio := decode_base + dec_fraction * decode_span
+			var overall_ratio := decode_start + dec_fraction * decode_remaining
 			var label := "Preparing volume (%.0f%%)" % [dec_fraction * 100.0]
 			progress.emit(label, overall_ratio)
 
-		progress.emit("Preparing %s..." % [spec_id], decode_base)
+		progress.emit("Preparing %s..." % [spec_id], decode_start)
 
 		var obj = await _decode_specimen(spec, body, decode_callback)
 		if obj == null:
@@ -242,8 +246,38 @@ func _ensure_js_fetch_helper() -> void:
 						if (onError) onError('HTTP ' + response.status);
 						return;
 					}
-					const headerLength = response.headers.get('Content-Length');
-					const contentLength = headerLength ? parseInt(headerLength, 10) : -1;
+					let headerLength = response.headers.get('content-length') || response.headers.get('Content-Length');
+					if (!headerLength) {
+						try {
+							for (const [k, v] of response.headers.entries()) {
+								if (k.toLowerCase() === 'content-length') {
+									headerLength = v;
+									break;
+								}
+							}
+						} catch (e) {}
+					}
+					let contentLength = -1;
+					if (headerLength) {
+						const parsed = parseInt(headerLength, 10);
+						if (!isNaN(parsed) && parsed > 0) {
+							contentLength = parsed;
+						}
+					}
+					if (contentLength <= 0) {
+						try {
+							const headRes = await fetch(url, { method: 'HEAD' });
+							if (headRes.ok) {
+								const headLen = headRes.headers.get('content-length') || headRes.headers.get('Content-Length');
+								if (headLen) {
+									const parsed = parseInt(headLen, 10);
+									if (!isNaN(parsed) && parsed > 0) {
+										contentLength = parsed;
+									}
+								}
+							}
+						} catch (e) {}
+					}
 					const reader = response.body.getReader();
 					let received = 0;
 					const chunks = [];
