@@ -219,9 +219,11 @@ func test_adaptive_step_budget_in_xr() -> void:
 	var vp := main.get_viewport()
 	var stage: Node3D = main.get_node("SpecimenStage")
 	var xr_cam: XRCamera3D = main.get_node("XROrigin3D/XRCamera3D")
+	var panel: DisplaySettingsPanel = main.get_node("CanvasLayer/DisplaySettingsPanel")
 
 	main._on_session_started()
 	vp.use_xr = true
+	panel.set_display({"adaptive_steps": true})
 	assert_float(vp.scaling_3d_scale).is_equal_approx(1.0, 0.001)
 
 	# XR camera far away (>= 1.5m)
@@ -278,6 +280,19 @@ func test_motion_adaptive_step_throttling_in_xr() -> void:
 
 	# Steps should throttle down to motion floor (48)
 	assert_that(main._current_xr_adaptive_steps).is_less_equal(48)
+
+	# Stop rotating (stationary at new angle)
+	main._last_xr_cam_rot = xr_cam.global_basis
+	main._update_adaptive_resolution(0.5)
+	# Steps should recover back to Quality.XR_STEPS
+	assert_that(main._current_xr_adaptive_steps).is_equal(Quality.XR_STEPS)
+
+	# Turning off motion adaptive should keep full steps even during rapid turn
+	var panel: DisplaySettingsPanel = main.get_node("CanvasLayer/DisplaySettingsPanel")
+	panel.set_display({"motion_adaptive_steps": false})
+	xr_cam.global_basis = Basis(Vector3.UP, deg_to_rad(180.0))
+	main._update_adaptive_resolution(0.016)
+	assert_that(main._current_xr_adaptive_steps).is_equal(Quality.XR_STEPS)
 
 	main._on_session_ended()
 	vp.use_xr = false
@@ -401,7 +416,7 @@ func test_adaptive_resolution_disabled_prevents_overrides() -> void:
 
 	# Both adaptive steps disabled
 	vr_panel.set_display({
-		"max_steps": 100,
+		"max_steps": 104,
 		"adaptive_steps": false,
 		"motion_adaptive_steps": false,
 	})
@@ -411,9 +426,9 @@ func test_adaptive_resolution_disabled_prevents_overrides() -> void:
 	vp.use_xr = true
 	main._current_xr_adaptive_steps = 999
 
-	# _update_adaptive_resolution should return early without modifying shader steps
+	# _update_adaptive_resolution should restore base_steps when adaptive is disabled
 	main._update_adaptive_resolution(0.016)
-	assert_int(main._current_xr_adaptive_steps).is_equal(-1)
+	assert_int(main._current_xr_adaptive_steps).is_equal(104)
 
 	main._on_session_ended()
 	vp.use_xr = false

@@ -196,6 +196,7 @@ func _wire_display_panels() -> void:
 		_user_touched_quality = true
 		_current_display.merge(display, true)
 		other.set_display(display)
+		_current_xr_adaptive_steps = -1
 		$SpecimenStage.apply_display(_current_display)
 		if get_viewport().use_xr and (display.has("ffr_enabled") or display.has("ffr_level")):
 			_apply_webxr_fixed_foveation(bool(_current_display.get("ffr_enabled", true)), float(_current_display.get("ffr_level", 1.0)))
@@ -508,6 +509,10 @@ func _on_session_started() -> void:
 	$CanvasLayer.visible = false
 	$CanvasLayer/EnterVR.visible = false
 	$CanvasLayer/Fullscreen.visible = false
+	_last_xr_cam_rot = $XROrigin3D/XRCamera3D.global_basis
+	_last_xr_cam_pos = $XROrigin3D/XRCamera3D.global_position
+	_smoothed_angular_speed = 0.0
+	_current_xr_adaptive_steps = -1
 	_apply_quality_tier()
 	var active_display: Dictionary = $CanvasLayer/DisplaySettingsPanel.get_display()
 	_apply_webxr_fixed_foveation(bool(active_display.get("ffr_enabled", true)), float(active_display.get("ffr_level", 1.0)))
@@ -664,7 +669,7 @@ func _update_adaptive_resolution(delta: float) -> void:
 	var t := pow(u, 0.75)
 
 	var active_display: Dictionary = $CanvasLayer/DisplaySettingsPanel.get_display()
-	var adaptive_xr: bool = bool(active_display.get("adaptive_steps", true))
+	var adaptive_xr: bool = bool(active_display.get("adaptive_steps", false))
 	var motion_adaptive: bool = bool(active_display.get("motion_adaptive_steps", true))
 	var adaptive_flat: bool = bool(active_display.get("adaptive_res_flat", true))
 
@@ -677,23 +682,30 @@ func _update_adaptive_resolution(delta: float) -> void:
 			var vscale: float = float(active_display.get("volume_render_scale", 1.0))
 			_apply_webxr_viewport_scale(vscale)
 
-		if not adaptive_xr and not motion_adaptive:
-			_current_xr_adaptive_steps = -1
-			return
-
-		# Instead, adaptively scale the raymarching step budget in XR based on camera distance to the box.
-		# When far away, full step count captures fine details. When close or inside, voxels are magnified,
-		# so step budget smoothly scales down, maintaining high framerate and constant GPU fill.
 		var base_steps: int = int(_authored_quality.get("max_steps", Quality.XR_STEPS))
 		if _user_touched_quality:
 			base_steps = int(active_display.get("max_steps", Quality.XR_STEPS))
 		else:
 			base_steps = mini(base_steps, Quality.XR_STEPS)
 
-		var min_xr_steps := 48
+		# If all adaptive stepping mechanisms are disabled, guarantee that the stage is restored to base_steps
+		if not adaptive_xr and not motion_adaptive:
+			if _current_xr_adaptive_steps != base_steps:
+				_current_xr_adaptive_steps = base_steps
+				var is_auto_step: bool = bool(active_display.get("auto_step_size", false))
+				var step_sz: float = float(Quality.step_size_for(base_steps) if is_auto_step else active_display.get("step_size", 0.0025))
+				var lut_subs: int = int(active_display.get("lut_substeps", 1))
+				$SpecimenStage.apply_display({
+					"max_steps": base_steps,
+					"step_size": step_sz,
+					"lut_substeps": lut_subs,
+				})
+			return
+
+		var min_xr_steps := int(active_display.get("motion_step_floor", 48))
 		var target_steps := base_steps
 		if adaptive_xr:
-			target_steps = int(round(lerpf(min_xr_steps, base_steps, t)))
+			target_steps = int(round(lerpf(float(min_xr_steps), float(base_steps), t)))
 
 		# Motion-adaptive quality throttling: during head rotation or rapid movement,
 		# reduce raymarching steps down toward motion_step_floor to prevent dropping frames.
@@ -706,20 +718,24 @@ func _update_adaptive_resolution(delta: float) -> void:
 			_last_xr_cam_pos = cur_pos
 			_last_xr_cam_rot = cur_basis
 
-			if angular_speed > _smoothed_angular_speed:
-				_smoothed_angular_speed = angular_speed
+			# Deadband of 35.0 deg/s filters out WebXR sensor noise and natural micro-tremor
+			var effective_speed := angular_speed if angular_speed > 35.0 else 0.0
+			if effective_speed > _smoothed_angular_speed:
+				_smoothed_angular_speed = effective_speed
 			else:
-				_smoothed_angular_speed = lerpf(_smoothed_angular_speed, angular_speed, clampf(8.0 * delta, 0.0, 1.0))
+				_smoothed_angular_speed = lerpf(_smoothed_angular_speed, effective_speed, clampf(14.0 * delta, 0.0, 1.0))
+			if _smoothed_angular_speed < 1.0:
+				_smoothed_angular_speed = 0.0
 
-		if motion_adaptive:
+		if motion_adaptive and _smoothed_angular_speed > 0.0:
 			var motion_floor: int = int(active_display.get("motion_step_floor", 48))
-			var motion_sens: float = float(active_display.get("motion_sensitivity", 25.0))
+			var motion_sens: float = float(active_display.get("motion_sensitivity", 50.0))
 			if motion_sens > 0.0:
-				var motion_factor := clampf((_smoothed_angular_speed - 0.5 * motion_sens) / (0.5 * motion_sens), 0.0, 1.0)
+				var motion_factor := clampf(_smoothed_angular_speed / motion_sens, 0.0, 1.0)
 				target_steps = int(round(lerpf(float(target_steps), float(motion_floor), motion_factor)))
 
 		target_steps = int(round(float(target_steps) / 8.0) * 8.0)
-		target_steps = clampi(target_steps, min_xr_steps, base_steps)
+		target_steps = clampi(target_steps, 32, base_steps)
 
 		if target_steps != _current_xr_adaptive_steps:
 			_current_xr_adaptive_steps = target_steps
