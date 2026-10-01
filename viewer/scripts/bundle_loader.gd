@@ -152,8 +152,7 @@ func _finish_load(manifest: Dictionary, fetch: Callable) -> void:
 			elif downloaded > 0:
 				var dl_mb := float(downloaded) / 1048576.0
 				var label := "Downloading %s (%.1f MB)" % [spec_id, dl_mb]
-				var dynamic_scale := maxf(16.0 * 1048576.0, float(downloaded) * 1.5)
-				var estimated_frac := clampf(1.0 - exp(-float(downloaded) / dynamic_scale), 0.0, 0.95)
+				var estimated_frac := clampf(dl_mb / (dl_mb + 8.0), 0.0, 0.92)
 				current_spec_ratio = spec_base + estimated_frac * dl_span
 				progress.emit(label, current_spec_ratio)
 
@@ -165,7 +164,7 @@ func _finish_load(manifest: Dictionary, fetch: Callable) -> void:
 			return
 
 		var body: PackedByteArray = fetched["body"]
-		var decode_start := maxf(current_spec_ratio, spec_base + dl_span)
+		var decode_start := current_spec_ratio
 		var spec_target := spec_base + spec_span
 		var decode_remaining := maxf(spec_target - decode_start, 0.001)
 
@@ -238,8 +237,7 @@ func _ensure_js_fetch_helper() -> void:
 	if not OS.has_feature("web"):
 		return
 	JavaScriptBridge.eval("""
-		if (!window._ascribe_streaming_fetch) {
-			window._ascribe_streaming_fetch = async function(url, onProgress, onSuccess, onError) {
+		window._ascribe_streaming_fetch = async function(url, onProgress, onSuccess, onError) {
 				try {
 					const response = await fetch(url);
 					if (!response.ok) {
@@ -305,15 +303,18 @@ func _ensure_js_fetch_helper() -> void:
 					}
 				}
 			};
-		}
 	""", true)
 
 
 func _fetch_web(url: String, on_progress: Callable = Callable()) -> Dictionary:
 	_ensure_js_fetch_helper()
 
+	var ok: Variant = JavaScriptBridge.eval("typeof window._ascribe_streaming_fetch === 'function'")
+	if not bool(ok):
+		return {"error": "js_bridge_unavailable"}
+
 	var window = JavaScriptBridge.get_interface("window")
-	if window == null or not window.has_method("_ascribe_streaming_fetch"):
+	if window == null:
 		return {"error": "js_bridge_unavailable"}
 
 	var result_box: Array = []
