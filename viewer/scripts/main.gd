@@ -35,6 +35,9 @@ const DEFAULT_BUNDLE := "res://tests/fixtures/tiny_bundle"
 const XR_SCALING_3D_SCALE := 1.0
 
 var _current_xr_adaptive_steps: int = -1
+var _last_xr_cam_pos: Vector3 = Vector3.ZERO
+var _last_xr_cam_rot: Basis = Basis.IDENTITY
+var _smoothed_angular_speed: float = 0.0
 
 
 func _ready() -> void:
@@ -502,6 +505,7 @@ func _on_session_ended() -> void:
 	$CanvasLayer.visible = true
 	$CanvasLayer/Fullscreen.visible = true
 	_current_xr_adaptive_steps = -1
+	_smoothed_angular_speed = 0.0
 	_apply_quality_tier()
 
 
@@ -654,6 +658,31 @@ func _update_adaptive_resolution(delta: float) -> void:
 
 		var min_xr_steps := 48
 		var target_steps := int(round(lerpf(min_xr_steps, base_steps, t)))
+
+		# Motion-adaptive quality throttling: during head rotation or rapid movement,
+		# reduce raymarching steps down toward motion_step_floor to prevent dropping frames.
+		if delta > 0.0001:
+			var cur_pos := cam.global_position
+			var cur_basis := cam.global_basis
+			var rot_delta := cur_basis.inverse() * _last_xr_cam_rot
+			var rot_angle := rot_delta.get_rotation_quaternion().get_angle()
+			var angular_speed := rad_to_deg(rot_angle) / delta
+			_last_xr_cam_pos = cur_pos
+			_last_xr_cam_rot = cur_basis
+
+			if angular_speed > _smoothed_angular_speed:
+				_smoothed_angular_speed = angular_speed
+			else:
+				_smoothed_angular_speed = lerpf(_smoothed_angular_speed, angular_speed, clampf(8.0 * delta, 0.0, 1.0))
+
+		var motion_adaptive: bool = bool(active_display.get("motion_adaptive_steps", true))
+		if motion_adaptive:
+			var motion_floor: int = int(active_display.get("motion_step_floor", 48))
+			var motion_sens: float = float(active_display.get("motion_sensitivity", 25.0))
+			if motion_sens > 0.0:
+				var motion_factor := clampf((_smoothed_angular_speed - 0.5 * motion_sens) / (0.5 * motion_sens), 0.0, 1.0)
+				target_steps = int(round(lerpf(float(target_steps), float(motion_floor), motion_factor)))
+
 		target_steps = int(round(float(target_steps) / 8.0) * 8.0)
 		target_steps = clampi(target_steps, min_xr_steps, base_steps)
 

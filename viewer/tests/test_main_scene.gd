@@ -254,3 +254,30 @@ func test_fixed_foveation_applied_on_session_start_and_panel_change() -> void:
 	assert_float(panel.get_display()["ffr_level"]).is_equal_approx(0.5, 0.01)
 
 	main._on_session_ended()
+
+func test_motion_adaptive_step_throttling_in_xr() -> void:
+	var main := await _make_main()
+	var vp := main.get_viewport()
+	var stage: Node3D = main.get_node("SpecimenStage")
+	var xr_cam: XRCamera3D = main.get_node("XROrigin3D/XRCamera3D")
+
+	main._on_session_started()
+	vp.use_xr = true
+
+	# Stationary far away: full XR steps
+	xr_cam.global_position = stage.global_position + Vector3(0, 0, 3.0)
+	xr_cam.global_basis = Basis.IDENTITY
+	main._last_xr_cam_rot = Basis.IDENTITY
+	main._smoothed_angular_speed = 0.0
+	main._update_adaptive_resolution(0.016)
+	assert_that(main._current_xr_adaptive_steps).is_equal(Quality.XR_STEPS)
+
+	# Sudden rapid rotation (e.g. 90 degrees in 16ms = ~5600 deg/s)
+	xr_cam.global_basis = Basis(Vector3.UP, deg_to_rad(90.0))
+	main._update_adaptive_resolution(0.016)
+
+	# Steps should throttle down to motion floor (48)
+	assert_that(main._current_xr_adaptive_steps).is_less_equal(48)
+
+	main._on_session_ended()
+	vp.use_xr = false

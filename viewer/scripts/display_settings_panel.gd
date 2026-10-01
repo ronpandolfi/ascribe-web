@@ -57,6 +57,12 @@ var _advanced_open := false
 @onready var _ffr_label: Label = $VBox/AdvancedScroll/AdvancedVBox/FFRLevelLabel
 @onready var _ffr_slider: HSlider = $VBox/AdvancedScroll/AdvancedVBox/FFRLevel
 
+@onready var _motion_adaptive_check: CheckBox = $VBox/AdvancedScroll/AdvancedVBox/MotionAdaptiveSteps
+@onready var _motion_floor_label: Label = $VBox/AdvancedScroll/AdvancedVBox/MotionFloorLabel
+@onready var _motion_floor_slider: HSlider = $VBox/AdvancedScroll/AdvancedVBox/MotionFloor
+@onready var _motion_sens_label: Label = $VBox/AdvancedScroll/AdvancedVBox/MotionSensLabel
+@onready var _motion_sens_slider: HSlider = $VBox/AdvancedScroll/AdvancedVBox/MotionSens
+
 @onready var _scale_3d_label: Label = $VBox/AdvancedScroll/AdvancedVBox/Scale3DLabel
 @onready var _scale_3d_slider: HSlider = $VBox/AdvancedScroll/AdvancedVBox/Scale3D
 @onready var _adaptive_flat_check: CheckBox = $VBox/AdvancedScroll/AdvancedVBox/AdaptiveResFlat
@@ -171,6 +177,15 @@ func _ready() -> void:
 		_update_label(_ffr_label, "FFR Level: %.1f" % v)
 		_emit_changed()
 	)
+	_motion_adaptive_check.toggled.connect(func(_p): _emit_changed())
+	_motion_floor_slider.value_changed.connect(func(v):
+		_update_label(_motion_floor_label, "Motion Step Floor: %d" % int(v))
+		_emit_changed()
+	)
+	_motion_sens_slider.value_changed.connect(func(v):
+		_update_label(_motion_sens_label, "Motion Sensitivity: %d deg/s" % int(v))
+		_emit_changed()
+	)
 
 	# Viewport controls
 	_scale_3d_slider.value_changed.connect(func(v):
@@ -215,6 +230,8 @@ func _refresh_labels() -> void:
 	_update_label(_jitter_label, "Ray Start Jitter: %.1f" % _jitter_slider.value)
 	_update_label(_lateral_dither_label, "Lateral Dither: %.1f" % _lateral_dither_slider.value)
 	_update_label(_ffr_label, "FFR Level: %.1f" % _ffr_slider.value)
+	_update_label(_motion_floor_label, "Motion Step Floor: %d" % int(_motion_floor_slider.value))
+	_update_label(_motion_sens_label, "Motion Sensitivity: %d deg/s" % int(_motion_sens_slider.value))
 	_update_label(_scale_3d_label, "Flat 3D Scale: %.2f" % _scale_3d_slider.value)
 
 
@@ -254,6 +271,9 @@ func get_display() -> Dictionary:
 		"lateral_jitter": float(_lateral_dither_slider.value if _lateral_dither_slider else 0.0),
 		"ffr_enabled": _ffr_check.button_pressed if _ffr_check else true,
 		"ffr_level": float(_ffr_slider.value if _ffr_slider else 1.0),
+		"motion_adaptive_steps": _motion_adaptive_check.button_pressed if _motion_adaptive_check else true,
+		"motion_step_floor": int(_motion_floor_slider.value if _motion_floor_slider else 48),
+		"motion_sensitivity": float(_motion_sens_slider.value if _motion_sens_slider else 25.0),
 		"scaling_3d_scale": float(_scale_3d_slider.value if _scale_3d_slider else 1.0),
 		"adaptive_res_flat": _adaptive_flat_check.button_pressed if _adaptive_flat_check else true,
 	}
@@ -331,6 +351,16 @@ func set_display(display: Dictionary) -> void:
 		var lvl := float(display["ffr_level"])
 		_ffr_slider.set_value_no_signal(lvl)
 		_update_label(_ffr_label, "FFR Level: %.1f" % lvl)
+	if display.has("motion_adaptive_steps") and _motion_adaptive_check:
+		_motion_adaptive_check.set_pressed_no_signal(bool(display["motion_adaptive_steps"]))
+	if display.has("motion_step_floor") and _motion_floor_slider:
+		var flr := int(display["motion_step_floor"])
+		_motion_floor_slider.set_value_no_signal(flr)
+		_update_label(_motion_floor_label, "Motion Step Floor: %d" % flr)
+	if display.has("motion_sensitivity") and _motion_sens_slider:
+		var sens := float(display["motion_sensitivity"])
+		_motion_sens_slider.set_value_no_signal(sens)
+		_update_label(_motion_sens_label, "Motion Sensitivity: %d deg/s" % int(sens))
 	if display.has("scaling_3d_scale") and _scale_3d_slider:
 		var sc := float(display["scaling_3d_scale"])
 		_scale_3d_slider.set_value_no_signal(sc)
