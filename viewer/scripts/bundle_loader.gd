@@ -238,18 +238,17 @@ func _http_get(url: String, on_progress: Callable = Callable()) -> Dictionary:
 		request.queue_free()
 		return {"error": "could not start request (error %d)" % [start_err]}
 
-	var response_result: Array = []
+	var response_box: Array = []
 	if not on_progress.is_valid():
-		response_result = await request.request_completed
+		var result: Array = await request.request_completed
+		response_box.append(result)
 	else:
-		var done := [false]
 		request.request_completed.connect(func(res: int, code: int, headers: PackedStringArray, body: PackedByteArray):
-			done[0] = true
-			response_result = [res, code, headers, body]
+			response_box.append([res, code, headers, body])
 		)
 
 		var tree := get_tree()
-		while not done[0]:
+		while response_box.is_empty():
 			var downloaded := request.get_downloaded_bytes()
 			var total := request.get_body_size()
 			if downloaded > 0:
@@ -263,16 +262,23 @@ func _http_get(url: String, on_progress: Callable = Callable()) -> Dictionary:
 			else:
 				break
 
-		if not done[0]:
-			response_result = await request.request_completed
+		if response_box.is_empty():
+			var result: Array = await request.request_completed
+			response_box.append(result)
 
 	request.queue_free()
 
-	if response_result.size() < 4:
+	if response_box.is_empty() or response_box[0].size() < 4:
 		return {"error": "request failed or aborted"}
 
+	var response_result: Array = response_box[0]
+	var http_res: int = response_result[0]
 	var response_code: int = response_result[1]
 	var body: PackedByteArray = response_result[3]
+
+	if http_res != HTTPRequest.RESULT_SUCCESS:
+		return {"error": "HTTP request failed (result %d)" % [http_res]}
+
 	if response_code < 200 or response_code >= 300:
 		return {"error": "HTTP %d" % [response_code]}
 
