@@ -131,6 +131,9 @@ func test_set_display_sets_advanced_properties_without_emitting() -> void:
 		"use_coarse_grid": false,
 		"coarse_leap_stride": 4.0,
 		"use_precomputed_normals": true,
+		"decoupled_volume_pass": true,
+		"volume_render_scale": 0.65,
+		"edge_aware_upscale": false,
 	})
 
 	var d := panel.get_display()
@@ -158,4 +161,7 @@ func test_set_display_sets_advanced_properties_without_emitting() -> void:
 	assert_that(d["use_coarse_grid"]).is_false()
 	assert_float(d["coarse_leap_stride"]).is_equal_approx(4.0, 0.01)
 	assert_that(d["use_precomputed_normals"]).is_true()
+	assert_that(d["decoupled_volume_pass"]).is_true()
+	assert_float(d["volume_render_scale"]).is_equal_approx(0.65, 0.01)
+	assert_that(d["edge_aware_upscale"]).is_false()
 

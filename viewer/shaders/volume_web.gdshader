@@ -29,6 +29,8 @@ uniform int max_steps = 256;
 uniform float step_size = 0.005;
 uniform bool opacity_adaptive_stepping = false;
 uniform float opacity_search_stride = 2.0;
+uniform float volume_render_scale = 1.0;
+uniform bool edge_aware_upscale = true;
 
 uniform sampler3D texture_volume : source_color, filter_linear, repeat_disable;
 uniform sampler3D texture_normals : filter_linear, repeat_disable;
@@ -320,7 +322,8 @@ void fragment() {
 	// drop the far side. Widen the step when the ray is longer than the budget covers, which
 	// trades a little sampling detail for never truncating the volume.
 	float span = max(t_far - t_near, 0.0);
-	float march_step = max(step_size, span / float(max_steps));
+	float eff_step_size = step_size / clamp(volume_render_scale, 0.25, 1.0);
+	float march_step = max(eff_step_size, span / float(max_steps));
 
 	// Opacity correction keeps density independent of step size.
 	vec3 accumulated_color = vec3(0.0);

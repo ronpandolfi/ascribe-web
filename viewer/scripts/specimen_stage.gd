@@ -157,6 +157,10 @@ func _apply_display_to_material(mat: ShaderMaterial, display: Dictionary) -> voi
 		mat.set_shader_parameter("shading_enabled", bool(display["shading_enabled"]))
 	if display.has("use_precomputed_normals"):
 		mat.set_shader_parameter("use_precomputed_normals", bool(display["use_precomputed_normals"]))
+	if display.has("volume_render_scale"):
+		mat.set_shader_parameter("volume_render_scale", float(display["volume_render_scale"]))
+	if display.has("edge_aware_upscale"):
+		mat.set_shader_parameter("edge_aware_upscale", bool(display["edge_aware_upscale"]))
 	if display.has("use_preintegrated_lut"):
 		mat.set_shader_parameter("use_preintegrated_lut", bool(display["use_preintegrated_lut"]))
 	if display.has("saturation_cutoff"):

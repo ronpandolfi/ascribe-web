@@ -187,3 +187,9 @@ func test_precomputed_normal_volume_uniforms_and_logic() -> void:
 	assert_str(src).contains("uniform bool use_precomputed_normals = false;")
 	assert_str(src).contains("if (use_precomputed_normals)")
 	assert_str(src).contains("vec3 enc = texture(texture_normals, tex_sample_pt).rgb;")
+
+func test_decoupled_volume_scale_uniforms_and_scaling() -> void:
+	var src := _source()
+	assert_str(src).contains("uniform float volume_render_scale = 1.0;")
+	assert_str(src).contains("uniform bool edge_aware_upscale = true;")
+	assert_str(src).contains("float eff_step_size = step_size / clamp(volume_render_scale, 0.25, 1.0);")

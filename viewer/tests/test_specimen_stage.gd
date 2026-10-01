@@ -271,6 +271,8 @@ func test_advanced_display_parameters_reach_the_shader() -> void:
 		"use_coarse_grid": false,
 		"coarse_leap_stride": 4.5,
 		"use_precomputed_normals": true,
+		"volume_render_scale": 0.75,
+		"edge_aware_upscale": false,
 	})
 
 	var mesh_child: MeshInstance3D = null
@@ -289,4 +291,6 @@ func test_advanced_display_parameters_reach_the_shader() -> void:
 	assert_that(bool(mat.get_shader_parameter("use_coarse_grid"))).is_false()
 	assert_float(mat.get_shader_parameter("coarse_leap_stride")).is_equal_approx(4.5, 0.001)
 	assert_that(bool(mat.get_shader_parameter("use_precomputed_normals"))).is_true()
+	assert_float(mat.get_shader_parameter("volume_render_scale")).is_equal_approx(0.75, 0.001)
+	assert_that(bool(mat.get_shader_parameter("edge_aware_upscale"))).is_false()
 

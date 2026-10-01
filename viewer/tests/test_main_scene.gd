@@ -281,3 +281,25 @@ func test_motion_adaptive_step_throttling_in_xr() -> void:
 
 	main._on_session_ended()
 	vp.use_xr = false
+
+func test_decoupled_volume_pass_in_flat_and_xr() -> void:
+	var main := await _make_main()
+	var vp := main.get_viewport()
+	var panel: DisplaySettingsPanel = main.get_node("CanvasLayer/DisplaySettingsPanel")
+
+	# Flat mode decoupled pass scales vp.scaling_3d_scale to volume_render_scale
+	panel.set_display({
+		"decoupled_volume_pass": true,
+		"volume_render_scale": 0.65,
+	})
+	main._update_adaptive_resolution(0.016)
+	assert_float(vp.scaling_3d_scale).is_equal_approx(0.65, 0.01)
+
+	# In XR, vp.scaling_3d_scale stays 1.0 to prevent right-eye stereo blit bug
+	main._on_session_started()
+	vp.use_xr = true
+	main._update_adaptive_resolution(0.016)
+	assert_float(vp.scaling_3d_scale).is_equal_approx(1.0, 0.001)
+
+	main._on_session_ended()
+	vp.use_xr = false

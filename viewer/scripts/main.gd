@@ -614,6 +614,16 @@ func _apply_webxr_fixed_foveation(enabled: bool, level: float) -> void:
 	JavaScriptBridge.eval(js, true)
 
 
+func _apply_webxr_viewport_scale(scale: float) -> void:
+	if not OS.has_feature("web"):
+		return
+	JavaScriptBridge.eval("""
+		(function() {
+			window.__webxr_viewport_scale = %f;
+		})();
+	""" % scale)
+
+
 ## Dynamically scales 3D viewport rendering resolution based on camera distance to the staged
 ## specimen bounding box surface. When far away, resolution scale is high (crisp overview, few
 ## total rays). When close up or inside the volume, a small patch of voxels magnifies across the
@@ -643,6 +653,10 @@ func _update_adaptive_resolution(delta: float) -> void:
 		# Godot's WebGL Compatibility renderer does not support multiview blit with scaling_3d_scale < 1.0;
 		# it only upscales to the right eye, breaking stereoscopic rendering. Keep viewport scaling at 1.0.
 		vp.scaling_3d_scale = 1.0
+		var decoupled_pass: bool = bool(active_display.get("decoupled_volume_pass", false))
+		if decoupled_pass:
+			var vscale: float = float(active_display.get("volume_render_scale", 1.0))
+			_apply_webxr_viewport_scale(vscale)
 
 		if not adaptive_xr:
 			_current_xr_adaptive_steps = -1
@@ -698,6 +712,11 @@ func _update_adaptive_resolution(delta: float) -> void:
 		return
 
 	# In flat mode (mono rendering), scaling_3d_scale works reliably without stereo blit artifacts
+	var decoupled_flat: bool = bool(active_display.get("decoupled_volume_pass", false))
+	if decoupled_flat:
+		var vscale: float = float(active_display.get("volume_render_scale", 1.0))
+		vp.scaling_3d_scale = vscale
+		return
 	if not adaptive_flat:
 		var manual_scale: float = float(active_display.get("scaling_3d_scale", 1.0))
 		vp.scaling_3d_scale = manual_scale

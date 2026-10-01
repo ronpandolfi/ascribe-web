@@ -70,6 +70,10 @@ var _advanced_open := false
 @onready var _motion_sens_label: Label = $VBox/AdvancedScroll/AdvancedVBox/MotionSensLabel
 @onready var _motion_sens_slider: HSlider = $VBox/AdvancedScroll/AdvancedVBox/MotionSens
 
+@onready var _decoupled_pass_check: CheckBox = $VBox/AdvancedScroll/AdvancedVBox/DecoupledVolumePass
+@onready var _vol_scale_label: Label = $VBox/AdvancedScroll/AdvancedVBox/VolumeScaleLabel
+@onready var _vol_scale_slider: HSlider = $VBox/AdvancedScroll/AdvancedVBox/VolumeScale
+@onready var _edge_upscale_check: CheckBox = $VBox/AdvancedScroll/AdvancedVBox/EdgeAwareUpscale
 @onready var _scale_3d_label: Label = $VBox/AdvancedScroll/AdvancedVBox/Scale3DLabel
 @onready var _scale_3d_slider: HSlider = $VBox/AdvancedScroll/AdvancedVBox/Scale3D
 @onready var _adaptive_flat_check: CheckBox = $VBox/AdvancedScroll/AdvancedVBox/AdaptiveResFlat
@@ -206,6 +210,12 @@ func _ready() -> void:
 	)
 
 	# Viewport controls
+	_decoupled_pass_check.toggled.connect(func(_p): _emit_changed())
+	_vol_scale_slider.value_changed.connect(func(v):
+		_update_label(_vol_scale_label, "Volume Render Scale: %.2fx" % v)
+		_emit_changed()
+	)
+	_edge_upscale_check.toggled.connect(func(_p): _emit_changed())
 	_scale_3d_slider.value_changed.connect(func(v):
 		_update_label(_scale_3d_label, "Flat 3D Scale: %.2f" % v)
 		_emit_changed()
@@ -252,6 +262,7 @@ func _refresh_labels() -> void:
 	_update_label(_ffr_label, "FFR Level: %.1f" % _ffr_slider.value)
 	_update_label(_motion_floor_label, "Motion Step Floor: %d" % int(_motion_floor_slider.value))
 	_update_label(_motion_sens_label, "Motion Sensitivity: %d deg/s" % int(_motion_sens_slider.value))
+	_update_label(_vol_scale_label, "Volume Render Scale: %.2fx" % _vol_scale_slider.value)
 	_update_label(_scale_3d_label, "Flat 3D Scale: %.2f" % _scale_3d_slider.value)
 
 
@@ -299,6 +310,9 @@ func get_display() -> Dictionary:
 		"motion_adaptive_steps": _motion_adaptive_check.button_pressed if _motion_adaptive_check else true,
 		"motion_step_floor": int(_motion_floor_slider.value if _motion_floor_slider else 48),
 		"motion_sensitivity": float(_motion_sens_slider.value if _motion_sens_slider else 25.0),
+		"decoupled_volume_pass": _decoupled_pass_check.button_pressed if _decoupled_pass_check else false,
+		"volume_render_scale": float(_vol_scale_slider.value if _vol_scale_slider else 1.0),
+		"edge_aware_upscale": _edge_upscale_check.button_pressed if _edge_upscale_check else true,
 		"scaling_3d_scale": float(_scale_3d_slider.value if _scale_3d_slider else 1.0),
 		"adaptive_res_flat": _adaptive_flat_check.button_pressed if _adaptive_flat_check else true,
 	}
@@ -400,6 +414,14 @@ func set_display(display: Dictionary) -> void:
 		var sens := float(display["motion_sensitivity"])
 		_motion_sens_slider.set_value_no_signal(sens)
 		_update_label(_motion_sens_label, "Motion Sensitivity: %d deg/s" % int(sens))
+	if display.has("decoupled_volume_pass") and _decoupled_pass_check:
+		_decoupled_pass_check.set_pressed_no_signal(bool(display["decoupled_volume_pass"]))
+	if display.has("volume_render_scale") and _vol_scale_slider:
+		var vs := float(display["volume_render_scale"])
+		_vol_scale_slider.set_value_no_signal(vs)
+		_update_label(_vol_scale_label, "Volume Render Scale: %.2fx" % vs)
+	if display.has("edge_aware_upscale") and _edge_upscale_check:
+		_edge_upscale_check.set_pressed_no_signal(bool(display["edge_aware_upscale"]))
 	if display.has("scaling_3d_scale") and _scale_3d_slider:
 		var sc := float(display["scaling_3d_scale"])
 		_scale_3d_slider.set_value_no_signal(sc)
