@@ -106,7 +106,7 @@ value = 0.00125
 
 [node name="AutoStepSize" type="CheckBox" parent="VBox/AdvancedScroll/AdvancedVBox"]
 layout_mode = 2
-button_pressed = false
+button_pressed = true
 text = "Auto Step Size (Linked)"
 
 [node name="AdaptiveSteps" type="CheckBox" parent="VBox/AdvancedScroll/AdvancedVBox"]
@@ -276,14 +276,14 @@ value = 48.0
 
 [node name="MotionSensLabel" type="Label" parent="VBox/AdvancedScroll/AdvancedVBox"]
 layout_mode = 2
-text = "Motion Sensitivity: 50 deg/s"
+text = "Motion Sensitivity: 20 deg/s"
 
 [node name="MotionSens" type="HSlider" parent="VBox/AdvancedScroll/AdvancedVBox"]
 layout_mode = 2
-min_value = 20.0
+min_value = 5.0
 max_value = 120.0
 step = 5.0
-value = 50.0
+value = 20.0
 
 [node name="ViewportHeader" type="Label" parent="VBox/AdvancedScroll/AdvancedVBox"]
 layout_mode = 2

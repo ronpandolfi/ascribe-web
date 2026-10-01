@@ -20,6 +20,8 @@ func test_ready_wires_sliders_and_reports_defaults() -> void:
 	assert_that(display["opacity"]).is_equal(1.0)
 	assert_that(display["max_steps"]).is_equal(Quality.DESKTOP_STEPS)
 	assert_that(display["step_size"]).is_equal(Quality.step_size_for(Quality.DESKTOP_STEPS))
+	assert_bool(display["auto_step_size"]).is_true()
+	assert_float(display["motion_sensitivity"]).is_equal_approx(20.0, 0.1)
 
 
 func test_moving_a_slider_emits_display_changed() -> void:

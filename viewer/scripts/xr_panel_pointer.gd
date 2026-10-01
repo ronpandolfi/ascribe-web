@@ -1,9 +1,8 @@
-## In-VR pointer for the display settings panel: casts a ray from the right controller, shows a
-## laser dot where it hits the panel quad, forwards hover as mouse motion into the panel's
-## SubViewport, and synthesizes continuous mouse drag / click events with the trigger so sliders
-## can be dragged fluidly.
-## The panel is hidden outside XR; in XR it is visible by default and toggled by the left
-## controller's "by" button when that input is available (headsets without it just leave it on).
+## In-VR pointer for UI panels (display settings and story panels): casts rays from both
+## right and left controllers, shows a laser dot where each hits the panel quad, forwards hover
+## into the panel's SubViewport, and synthesizes continuous mouse drag / click events with either
+## hand's trigger so sliders and buttons can be operated fluidly by either hand.
+## In XR the panel is visible by default and toggled by the B/Y button on either controller.
 extends Node3D
 
 const TRIGGER_THRESHOLD := 0.7
@@ -12,21 +11,47 @@ const TRIGGER_THRESHOLD := 0.7
 @export var left_controller: XRController3D
 @export var panel_quad: MeshInstance3D
 @export var panel_viewport: SubViewport
-@export var laser_dot: MeshInstance3D
+@export var laser_dot: MeshInstance3D:
+	set(val):
+		laser_dot = val
+		_ensure_laser_dot_left()
+@export var laser_dot_left: MeshInstance3D
 
 var _prev_by_pressed: bool = false
-var _prev_trigger_pressed: bool = false
+var _active_controller: XRController3D = null
+var _prev_active_trigger: bool = false
 var _last_uv := Vector2(0.5, 0.5)
 
 
+func _ready() -> void:
+	_ensure_laser_dot_left()
+
+
+func _ensure_laser_dot_left() -> void:
+	if laser_dot and laser_dot_left == null and laser_dot.get_parent():
+		laser_dot_left = laser_dot.duplicate() as MeshInstance3D
+		laser_dot.get_parent().add_child(laser_dot_left)
+		laser_dot_left.visible = false
+
+
+func _exit_tree() -> void:
+	if laser_dot_left and is_instance_valid(laser_dot_left) and laser_dot_left.get_parent():
+		laser_dot_left.queue_free()
+		laser_dot_left = null
+
+
 func _physics_process(_delta: float) -> void:
-	if panel_quad == null or right_controller == null or panel_viewport == null:
+	if panel_quad == null or panel_viewport == null:
+		return
+	if right_controller == null and left_controller == null:
 		return
 
 	if not get_viewport().use_xr:
 		panel_quad.visible = false
 		if laser_dot:
 			laser_dot.visible = false
+		if laser_dot_left:
+			laser_dot_left.visible = false
 		return
 
 	_handle_toggle()
@@ -34,53 +59,94 @@ func _physics_process(_delta: float) -> void:
 	if not panel_quad.visible:
 		if laser_dot:
 			laser_dot.visible = false
-		if _prev_trigger_pressed:
+		if laser_dot_left:
+			laser_dot_left.visible = false
+		if _prev_active_trigger:
 			_push_button(_last_uv, false)
-			_prev_trigger_pressed = false
+			_prev_active_trigger = false
+			_active_controller = null
 		return
 
-	var hit := _intersect_quad(right_controller.global_transform)
-	if hit.is_empty():
-		if laser_dot:
-			laser_dot.visible = false
-		if _prev_trigger_pressed:
-			_push_button(_last_uv, false)
-			_prev_trigger_pressed = false
-		return
+	if laser_dot and laser_dot_left == null:
+		_ensure_laser_dot_left()
+
+	var right_hit := _intersect_quad(right_controller.global_transform) if right_controller else {}
+	var left_hit := _intersect_quad(left_controller.global_transform) if left_controller else {}
+
+	var right_trigger: bool = right_controller.get_float("trigger") > TRIGGER_THRESHOLD if right_controller else false
+	var left_trigger: bool = left_controller.get_float("trigger") > TRIGGER_THRESHOLD if left_controller else false
 
 	if laser_dot:
-		laser_dot.visible = true
-		laser_dot.global_position = hit["point"]
+		if not right_hit.is_empty():
+			laser_dot.visible = true
+			laser_dot.global_position = right_hit["point"]
+		else:
+			laser_dot.visible = false
 
-	var uv: Vector2 = hit["uv"]
+	if laser_dot_left:
+		if not left_hit.is_empty():
+			laser_dot_left.visible = true
+			laser_dot_left.global_position = left_hit["point"]
+		else:
+			laser_dot_left.visible = false
+
+	var driving_controller: XRController3D = null
+	var hit_dict: Dictionary = {}
+
+	if _active_controller != null:
+		driving_controller = _active_controller
+		var is_right := (driving_controller == right_controller)
+		hit_dict = right_hit if is_right else left_hit
+	else:
+		if right_trigger and not right_hit.is_empty():
+			driving_controller = right_controller
+			hit_dict = right_hit
+		elif left_trigger and not left_hit.is_empty():
+			driving_controller = left_controller
+			hit_dict = left_hit
+		elif not right_hit.is_empty():
+			driving_controller = right_controller
+			hit_dict = right_hit
+		elif not left_hit.is_empty():
+			driving_controller = left_controller
+			hit_dict = left_hit
+
+	if driving_controller == null or hit_dict.is_empty():
+		if _prev_active_trigger:
+			_push_button(_last_uv, false)
+			_prev_active_trigger = false
+		_active_controller = null
+		return
+
+	var uv: Vector2 = hit_dict["uv"]
 	_last_uv = uv
 
-	var trigger_pressed: bool = right_controller.get_float("trigger") > TRIGGER_THRESHOLD
-	if trigger_pressed and not _prev_trigger_pressed:
+	var trigger_pressed: bool = driving_controller.get_float("trigger") > TRIGGER_THRESHOLD
+	if trigger_pressed and not _prev_active_trigger:
+		_active_controller = driving_controller
 		_push_button(uv, true)
-	elif trigger_pressed and _prev_trigger_pressed:
+	elif trigger_pressed and _prev_active_trigger:
 		_push_motion(uv, true)
-	elif not trigger_pressed and _prev_trigger_pressed:
+	elif not trigger_pressed and _prev_active_trigger:
 		_push_button(uv, false)
+		_active_controller = null
 	else:
 		_push_motion(uv, false)
 
-	_prev_trigger_pressed = trigger_pressed
+	_prev_active_trigger = trigger_pressed
 
 
 func _handle_toggle() -> void:
-	if left_controller == null:
-		return
-	var by_pressed: bool = left_controller.is_button_pressed("by_button")
+	var by_pressed: bool = false
+	if left_controller and left_controller.is_button_pressed("by_button"):
+		by_pressed = true
+	elif right_controller and right_controller.is_button_pressed("by_button"):
+		by_pressed = true
 	if by_pressed and not _prev_by_pressed:
 		panel_quad.visible = not panel_quad.visible
 	_prev_by_pressed = by_pressed
 
 
-## Ray-vs-plane intersection between the controller's forward ray (-Z in its local space) and the
-## panel quad's plane, in the quad's own coordinate frame. Returns `{}` when the ray points away
-## from the plane or misses the quad's bounds; otherwise `{"point": Vector3, "uv": Vector2}` where
-## `uv` is in `[0,1]x[0,1]` with the origin at the quad's top-left (viewport pixel convention).
 func _intersect_quad(ray_transform: Transform3D) -> Dictionary:
 	var mesh := panel_quad.mesh as QuadMesh
 	if mesh == null:

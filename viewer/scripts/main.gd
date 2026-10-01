@@ -62,6 +62,7 @@ func _ready() -> void:
 	var stage_node: Node3D = $SpecimenStage
 	_last_stage_pos = stage_node.global_position
 	_last_stage_rot = stage_node.global_basis.orthonormalized()
+	_init_webxr_ffr_hooks()
 
 	_loader = BundleLoader.new()
 	add_child(_loader)
@@ -184,6 +185,7 @@ func _wire_xr_grab() -> void:
 	# no left-controller toggle wired so it simply stays visible.
 	var story_pointer := $XROrigin3D/StoryPanelPointer
 	story_pointer.right_controller = $XROrigin3D/RightController
+	story_pointer.left_controller = $XROrigin3D/LeftController
 	story_pointer.panel_quad = $XROrigin3D/StoryQuad
 	story_pointer.panel_viewport = $XROrigin3D/StoryViewport
 	story_pointer.laser_dot = $XROrigin3D/StoryLaserDot
@@ -610,6 +612,96 @@ func _on_window_size_changed() -> void:
 	_update_fullscreen_button()
 	_update_fullscreen_button_layout()
 
+func _init_webxr_ffr_hooks() -> void:
+	if not OS.has_feature("web"):
+		return
+	var js: String = """
+	(function() {
+		if (window.__webxr_ffr_installed) return;
+		window.__webxr_ffr_installed = true;
+		if (typeof window.__webxr_ffr_level === 'undefined') {
+			window.__webxr_ffr_level = 1.0;
+		}
+		if (typeof XRWebGLBinding !== 'undefined' && XRWebGLBinding.prototype) {
+			var origCreate = XRWebGLBinding.prototype.createProjectionLayer;
+			if (origCreate) {
+				XRWebGLBinding.prototype.createProjectionLayer = function() {
+					var layer = origCreate.apply(this, arguments);
+					window.__webxr_projection_layer = layer;
+					if ('fixedFoveation' in layer && window.__webxr_ffr_level !== null) {
+						layer.fixedFoveation = window.__webxr_ffr_level;
+						console.log('[WebXR FFR] Initialized projection layer fixedFoveation to', window.__webxr_ffr_level);
+					}
+					return layer;
+				};
+			}
+		}
+		if (navigator.xr && navigator.xr.requestSession) {
+			var origReq = navigator.xr.requestSession.bind(navigator.xr);
+			navigator.xr.requestSession = async function() {
+				var session = await origReq.apply(navigator.xr, arguments);
+				window.__webxr_session = session;
+				var origUpdate = session.updateRenderState.bind(session);
+				session.updateRenderState = function(state) {
+					if (state && state.layers) {
+						window.__webxr_layers = state.layers;
+						for (var i = 0; i < state.layers.length; i++) {
+							var l = state.layers[i];
+							if ('fixedFoveation' in l && window.__webxr_ffr_level !== null) {
+								l.fixedFoveation = window.__webxr_ffr_level;
+							}
+						}
+					}
+					if (state && state.baseLayer) {
+						window.__webxr_base_layer = state.baseLayer;
+						if ('fixedFoveation' in state.baseLayer && window.__webxr_ffr_level !== null) {
+							state.baseLayer.fixedFoveation = window.__webxr_ffr_level;
+						}
+					}
+					return origUpdate(state);
+				};
+				return session;
+			};
+		}
+		window.__webxr_set_ffr = function(lvl) {
+			window.__webxr_ffr_level = lvl;
+			var applied = false;
+			if (window.__webxr_projection_layer && 'fixedFoveation' in window.__webxr_projection_layer) {
+				window.__webxr_projection_layer.fixedFoveation = lvl;
+				applied = true;
+			}
+			if (window.__webxr_layers) {
+				for (var i = 0; i < window.__webxr_layers.length; i++) {
+					var l = window.__webxr_layers[i];
+					if ('fixedFoveation' in l) {
+						l.fixedFoveation = lvl;
+						applied = true;
+					}
+				}
+			}
+			if (window.__webxr_session && window.__webxr_session.renderState) {
+				var rs = window.__webxr_session.renderState;
+				if (rs.baseLayer && 'fixedFoveation' in rs.baseLayer) {
+					rs.baseLayer.fixedFoveation = lvl;
+					applied = true;
+				}
+				if (rs.layers) {
+					for (var j = 0; j < rs.layers.length; j++) {
+						if ('fixedFoveation' in rs.layers[j]) {
+							rs.layers[j].fixedFoveation = lvl;
+							applied = true;
+						}
+					}
+				}
+			}
+			console.log('[WebXR FFR] Set fixedFoveation to ' + lvl + ' (applied: ' + applied + ')');
+			return applied;
+		};
+	})();
+	"""
+	JavaScriptBridge.eval(js, true)
+
+
 ## Configures hardware Fixed Foveated Rendering (FFR) via WebXR on Meta Quest.
 ## Level ranges from 0.0 (disabled) to 1.0 (maximum peripheral reduction).
 func _apply_webxr_fixed_foveation(enabled: bool, level: float) -> void:
@@ -619,31 +711,12 @@ func _apply_webxr_fixed_foveation(enabled: bool, level: float) -> void:
 	var js: String = """
 	(function(lvl) {
 		try {
-			var applied = false;
-			if (typeof GodotWebXR !== 'undefined') {
-				if (GodotWebXR.layer && 'fixedFoveation' in GodotWebXR.layer) {
-					GodotWebXR.layer.fixedFoveation = lvl;
-					applied = true;
-				}
-				if (GodotWebXR.session && GodotWebXR.session.renderState) {
-					var rs = GodotWebXR.session.renderState;
-					if (rs.baseLayer && 'fixedFoveation' in rs.baseLayer) {
-						rs.baseLayer.fixedFoveation = lvl;
-						applied = true;
-					}
-					if (rs.layers && Array.isArray(rs.layers)) {
-						for (var i = 0; i < rs.layers.length; i++) {
-							if ('fixedFoveation' in rs.layers[i]) {
-								rs.layers[i].fixedFoveation = lvl;
-								applied = true;
-							}
-						}
-					}
-				}
+			if (typeof window.__webxr_set_ffr === 'function') {
+				return window.__webxr_set_ffr(lvl);
 			}
-			return applied;
+			return false;
 		} catch (e) {
-			console.warn('Failed to set WebXR fixedFoveation:', e);
+			console.warn('[WebXR FFR] Error setting ffr:', e);
 			return false;
 		}
 	})(%.2f);
@@ -706,7 +779,7 @@ func _update_adaptive_resolution(delta: float) -> void:
 		if not adaptive_xr and not motion_adaptive:
 			if _current_xr_adaptive_steps != base_steps:
 				_current_xr_adaptive_steps = base_steps
-				var is_auto_step: bool = bool(active_display.get("auto_step_size", false))
+				var is_auto_step: bool = bool(active_display.get("auto_step_size", true))
 				var step_sz: float = float(Quality.step_size_for(base_steps) if is_auto_step else active_display.get("step_size", 0.0025))
 				var lut_subs: int = int(active_display.get("lut_substeps", 1))
 				$SpecimenStage.apply_display({
@@ -748,8 +821,9 @@ func _update_adaptive_resolution(delta: float) -> void:
 			var total_stage_speed := stage_angular_speed + stage_equiv_speed
 			var total_motion_speed := maxf(cam_angular_speed, total_stage_speed)
 
-			# Deadband of 35.0 deg/s filters out WebXR sensor noise and natural micro-tremor
-			var effective_speed := total_motion_speed if total_motion_speed > 35.0 else 0.0
+			var motion_sens: float = float(active_display.get("motion_sensitivity", 20.0))
+			var deadband: float = clampf(motion_sens * 0.4, 2.0, 15.0)
+			var effective_speed := total_motion_speed if total_motion_speed > deadband else 0.0
 			if effective_speed > _smoothed_angular_speed:
 				_smoothed_angular_speed = effective_speed
 			else:
@@ -759,7 +833,7 @@ func _update_adaptive_resolution(delta: float) -> void:
 
 		if motion_adaptive and _smoothed_angular_speed > 0.0:
 			var motion_floor: int = int(active_display.get("motion_step_floor", 48))
-			var motion_sens: float = float(active_display.get("motion_sensitivity", 50.0))
+			var motion_sens: float = float(active_display.get("motion_sensitivity", 20.0))
 			if motion_sens > 0.0:
 				var motion_factor := clampf(_smoothed_angular_speed / motion_sens, 0.0, 1.0)
 				target_steps = int(round(lerpf(float(target_steps), float(motion_floor), motion_factor)))
@@ -769,7 +843,7 @@ func _update_adaptive_resolution(delta: float) -> void:
 
 		if target_steps != _current_xr_adaptive_steps:
 			_current_xr_adaptive_steps = target_steps
-			var is_auto_step: bool = bool(active_display.get("auto_step_size", false))
+			var is_auto_step: bool = bool(active_display.get("auto_step_size", true))
 			var base_step_sz: float = float(Quality.step_size_for(target_steps) if is_auto_step else active_display.get("step_size", 0.0025))
 			var step_sz: float = base_step_sz
 			if not is_auto_step and motion_adaptive and target_steps < base_steps and target_steps > 0:
