@@ -157,6 +157,10 @@ func _apply_display_to_material(mat: ShaderMaterial, display: Dictionary) -> voi
 		mat.set_shader_parameter("ess_cutoff", float(display["ess_cutoff"]))
 	if display.has("ess_stride"):
 		mat.set_shader_parameter("ess_stride", float(display["ess_stride"]))
+	if display.has("opacity_adaptive_stepping"):
+		mat.set_shader_parameter("opacity_adaptive_stepping", bool(display["opacity_adaptive_stepping"]))
+	if display.has("opacity_search_stride"):
+		mat.set_shader_parameter("opacity_search_stride", float(display["opacity_search_stride"]))
 
 
 ## Builds a GradientTexture1D from a list of `[offset: float, hex_color: String]` stops (the

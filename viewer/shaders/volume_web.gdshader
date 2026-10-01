@@ -27,6 +27,8 @@ const int MAX_LUT_SUBSTEPS = 64;
 
 uniform int max_steps = 256;
 uniform float step_size = 0.005;
+uniform bool opacity_adaptive_stepping = false;
+uniform float opacity_search_stride = 2.0;
 
 uniform sampler3D texture_volume : source_color, filter_linear, repeat_disable;
 uniform sampler2D gradient : filter_linear, repeat_disable;
@@ -316,7 +318,6 @@ void fragment() {
 	float march_step = max(step_size, span / float(max_steps));
 
 	// Opacity correction keeps density independent of step size.
-	float step_ratio = march_step / REFERENCE_STEP;
 	vec3 accumulated_color = vec3(0.0);
 	float total_opacity = 0.0;
 	// Density at the previous march step, so the transfer function can be integrated across the
@@ -341,13 +342,23 @@ void fragment() {
 			? sample_volume_manual(sample_pt)
 			: texture(texture_volume, sample_pt).r;
 
+		float current_step = march_step;
+		if (opacity_adaptive_stepping) {
+			if (total_opacity == 0.0) {
+				current_step = march_step * opacity_search_stride;
+			} else if (total_opacity > 0.70) {
+				current_step = march_step * 1.5;
+			}
+		}
+		float step_ratio = current_step / REFERENCE_STEP;
+
 		if (projection_mode != 0) {
 			max_density = max(max_density, density);
 			density_sum += density;
 			density_count += 1.0;
 			prev_density = density;
 			has_prev = true;
-			t += march_step;
+			t += current_step;
 			continue;
 		}
 
@@ -367,7 +378,7 @@ void fragment() {
 		if (ess_stride > 1.0 && mapped_alpha < ess_cutoff) {
 			prev_density = density;
 			has_prev = true;
-			t += march_step * ess_stride;
+			t += current_step * ess_stride;
 			continue;
 		}
 
@@ -410,7 +421,7 @@ void fragment() {
 
 		prev_density = density;
 		has_prev = true;
-		t += march_step;
+		t += current_step;
 
 		// Saturated: everything behind this contributes nothing. Must break the march itself,
 		// not just the sub-step loop, or the ray keeps stepping for no reason.

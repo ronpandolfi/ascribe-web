@@ -126,6 +126,8 @@ func test_set_display_sets_advanced_properties_without_emitting() -> void:
 		"motion_adaptive_steps": false,
 		"motion_step_floor": 40,
 		"motion_sensitivity": 35.0,
+		"opacity_adaptive_stepping": true,
+		"opacity_search_stride": 3.0,
 	})
 
 	var d := panel.get_display()
@@ -148,4 +150,6 @@ func test_set_display_sets_advanced_properties_without_emitting() -> void:
 	assert_that(d["motion_adaptive_steps"]).is_false()
 	assert_that(d["motion_step_floor"]).is_equal(40)
 	assert_float(d["motion_sensitivity"]).is_equal_approx(35.0, 0.1)
+	assert_that(d["opacity_adaptive_stepping"]).is_true()
+	assert_float(d["opacity_search_stride"]).is_equal_approx(3.0, 0.01)
 

@@ -38,7 +38,7 @@ func test_empty_space_skipping_uses_mapped_opacity() -> void:
 	var src := _source()
 	assert_str(src).contains("float mapped_alpha = lut_sample.a * opacity;")
 	assert_str(src).contains("if (ess_stride > 1.0 && mapped_alpha < ess_cutoff)")
-	assert_str(src).contains("t += march_step * ess_stride;")
+	assert_str(src).contains("t += current_step * ess_stride;")
 
 
 # Compositing must weight each sample by the remaining transmittance. Accumulating raw opacity
@@ -52,7 +52,7 @@ func test_compositing_weights_by_remaining_transmittance() -> void:
 func test_opacity_is_corrected_for_step_size() -> void:
 	var src := _source()
 	assert_str(src).contains("REFERENCE_STEP")
-	assert_str(src).contains("float step_ratio = march_step / REFERENCE_STEP;")
+	assert_str(src).contains("float step_ratio = current_step / REFERENCE_STEP;")
 
 
 # The march is bounded by an exact ray/box interval rather than by max_steps * step_size, which
@@ -79,7 +79,7 @@ func test_shader_loads_as_a_material() -> void:
 func test_march_step_widens_to_cover_the_interval() -> void:
 	var src := _source()
 	assert_str(src).contains("float march_step = max(step_size, span / float(max_steps));")
-	assert_str(src).contains("float step_ratio = march_step / REFERENCE_STEP;")
+	assert_str(src).contains("float step_ratio = current_step / REFERENCE_STEP;")
 	assert_str(src).contains("t_near + jitter * march_step")
 
 
@@ -165,3 +165,10 @@ func test_saturation_breaks_the_march_not_just_the_substep_loop() -> void:
 # A manifest can still set display.lateral_jitter to 0 where the grain is not worth it.
 func test_lateral_dither_is_on_by_default() -> void:
 	assert_str(_source()).contains("uniform float lateral_jitter = 4.0;")
+
+func test_opacity_adaptive_stepping_uniforms_and_logic() -> void:
+	var src := _source()
+	assert_str(src).contains("uniform bool opacity_adaptive_stepping = false;")
+	assert_str(src).contains("uniform float opacity_search_stride = 2.0;")
+	assert_str(src).contains("if (opacity_adaptive_stepping)")
+	assert_str(src).contains("current_step = march_step * opacity_search_stride;")

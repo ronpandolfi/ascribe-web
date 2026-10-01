@@ -114,6 +114,22 @@ layout_mode = 2
 button_pressed = true
 text = "XR Distance-Adaptive Steps"
 
+[node name="OpacityAdaptiveStepping" type="CheckBox" parent="VBox/AdvancedScroll/AdvancedVBox"]
+layout_mode = 2
+button_pressed = false
+text = "Opacity-Adaptive Stepping"
+
+[node name="SearchStrideLabel" type="Label" parent="VBox/AdvancedScroll/AdvancedVBox"]
+layout_mode = 2
+text = "Search Leap Stride: 2.0x"
+
+[node name="SearchStride" type="HSlider" parent="VBox/AdvancedScroll/AdvancedVBox"]
+layout_mode = 2
+min_value = 1.0
+max_value = 4.0
+step = 0.5
+value = 2.0
+
 [node name="ShadingEnabled" type="CheckBox" parent="VBox/AdvancedScroll/AdvancedVBox"]
 layout_mode = 2
 text = "Surface Shading & Normals"

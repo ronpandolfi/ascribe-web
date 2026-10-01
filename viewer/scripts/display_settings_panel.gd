@@ -35,6 +35,9 @@ var _advanced_open := false
 @onready var _step_size_slider: HSlider = $VBox/AdvancedScroll/AdvancedVBox/StepSize
 @onready var _auto_step_check: CheckBox = $VBox/AdvancedScroll/AdvancedVBox/AutoStepSize
 @onready var _adaptive_steps_check: CheckBox = $VBox/AdvancedScroll/AdvancedVBox/AdaptiveSteps
+@onready var _opacity_adaptive_check: CheckBox = $VBox/AdvancedScroll/AdvancedVBox/OpacityAdaptiveStepping
+@onready var _search_stride_label: Label = $VBox/AdvancedScroll/AdvancedVBox/SearchStrideLabel
+@onready var _search_stride_slider: HSlider = $VBox/AdvancedScroll/AdvancedVBox/SearchStride
 @onready var _shading_check: CheckBox = $VBox/AdvancedScroll/AdvancedVBox/ShadingEnabled
 @onready var _early_cutoff_label: Label = $VBox/AdvancedScroll/AdvancedVBox/EarlyCutoffLabel
 @onready var _early_cutoff_slider: HSlider = $VBox/AdvancedScroll/AdvancedVBox/EarlyCutoff
@@ -138,6 +141,11 @@ func _ready() -> void:
 	)
 
 	_adaptive_steps_check.toggled.connect(func(_p): _emit_changed())
+	_opacity_adaptive_check.toggled.connect(func(_p): _emit_changed())
+	_search_stride_slider.value_changed.connect(func(v):
+		_update_label(_search_stride_label, "Search Leap Stride: %.1fx" % v)
+		_emit_changed()
+	)
 	_shading_check.toggled.connect(func(_p): _emit_changed())
 
 	_early_cutoff_slider.value_changed.connect(func(v):
@@ -223,6 +231,7 @@ func _refresh_labels() -> void:
 	_update_label(_quality_label, "Quality: %d steps" % int(_quality_slider.value))
 	_update_label(_max_steps_label, "Raymarch Steps: %d" % int(_max_steps_slider.value))
 	_update_label(_step_size_label, "Step Size: %.4f" % _step_size_slider.value)
+	_update_label(_search_stride_label, "Search Leap Stride: %.1fx" % _search_stride_slider.value)
 	_update_label(_early_cutoff_label, "Early Ray Cutoff: %.3f" % _early_cutoff_slider.value)
 	_update_label(_ess_stride_label, "ESS Leap Stride: %.1fx" % _ess_stride_slider.value)
 	_update_label(_ess_cutoff_label, "ESS Alpha Cutoff: %.4f" % _ess_cutoff_slider.value)
@@ -260,6 +269,8 @@ func get_display() -> Dictionary:
 		"step_size": step_sz,
 		"auto_step_size": _auto_step_check.button_pressed if _auto_step_check else false,
 		"adaptive_steps": _adaptive_steps_check.button_pressed if _adaptive_steps_check else true,
+		"opacity_adaptive_stepping": _opacity_adaptive_check.button_pressed if _opacity_adaptive_check else false,
+		"opacity_search_stride": float(_search_stride_slider.value if _search_stride_slider else 2.0),
 		"shading_enabled": _shading_check.button_pressed if _shading_check else false,
 		"saturation_cutoff": float(_early_cutoff_slider.value if _early_cutoff_slider else 0.995),
 		"ess_enabled": ess_on,
@@ -315,6 +326,12 @@ func set_display(display: Dictionary) -> void:
 		_auto_step_check.set_pressed_no_signal(bool(display["auto_step_size"]))
 	if display.has("adaptive_steps") and _adaptive_steps_check:
 		_adaptive_steps_check.set_pressed_no_signal(bool(display["adaptive_steps"]))
+	if display.has("opacity_adaptive_stepping") and _opacity_adaptive_check:
+		_opacity_adaptive_check.set_pressed_no_signal(bool(display["opacity_adaptive_stepping"]))
+	if display.has("opacity_search_stride") and _search_stride_slider:
+		var ss := float(display["opacity_search_stride"])
+		_search_stride_slider.set_value_no_signal(ss)
+		_update_label(_search_stride_label, "Search Leap Stride: %.1fx" % ss)
 	if display.has("shading_enabled") and _shading_check:
 		_shading_check.set_pressed_no_signal(bool(display["shading_enabled"]))
 	if display.has("saturation_cutoff") and _early_cutoff_slider:

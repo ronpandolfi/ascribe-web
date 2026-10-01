@@ -266,6 +266,8 @@ func test_advanced_display_parameters_reach_the_shader() -> void:
 		"jitter_amount": 0.5,
 		"ess_cutoff": 0.005,
 		"ess_stride": 3.0,
+		"opacity_adaptive_stepping": true,
+		"opacity_search_stride": 2.5,
 	})
 
 	var mesh_child: MeshInstance3D = null
@@ -279,4 +281,6 @@ func test_advanced_display_parameters_reach_the_shader() -> void:
 	assert_float(mat.get_shader_parameter("jitter_amount")).is_equal_approx(0.5, 0.001)
 	assert_float(mat.get_shader_parameter("ess_cutoff")).is_equal_approx(0.005, 0.0001)
 	assert_float(mat.get_shader_parameter("ess_stride")).is_equal_approx(3.0, 0.001)
+	assert_that(bool(mat.get_shader_parameter("opacity_adaptive_stepping"))).is_true()
+	assert_float(mat.get_shader_parameter("opacity_search_stride")).is_equal_approx(2.5, 0.001)
 
