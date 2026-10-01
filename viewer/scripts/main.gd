@@ -64,6 +64,8 @@ func _ready() -> void:
 	_loader.failed.connect(_on_failed)
 
 	$CanvasLayer/ProgressBar.value = 0.0
+	if $CanvasLayer.has_node("LoadingLabel"):
+		$CanvasLayer/LoadingLabel.text = "Loading manifest..."
 	_bundle_base_url = _resolve_bundle_url()
 	_loader.load_bundle(_bundle_base_url)
 
@@ -395,14 +397,18 @@ func _resolve_web_bundle_value(raw: String) -> String:
 	return decoded
 
 
-func _on_progress(_stage: String, ratio: float) -> void:
+func _on_progress(stage: String, ratio: float) -> void:
 	$CanvasLayer/ProgressBar.value = ratio * 100.0
+	if $CanvasLayer.has_node("LoadingLabel") and stage != "":
+		$CanvasLayer/LoadingLabel.text = stage
 
 
 func _on_loaded(manifest: Dictionary, specimens: Dictionary) -> void:
 	_manifest = manifest
 	_specimens = specimens
 	$CanvasLayer/ProgressBar.visible = false
+	if $CanvasLayer.has_node("LoadingLabel"):
+		$CanvasLayer/LoadingLabel.visible = false
 
 	# A bundle can carry its own default framing (saved by edit mode). An explicit --view=/?view=
 	# still wins, so a shared link always shows what it promised.
@@ -448,6 +454,8 @@ func _on_loaded(manifest: Dictionary, specimens: Dictionary) -> void:
 
 func _on_failed(message: String) -> void:
 	$CanvasLayer/ProgressBar.visible = false
+	if $CanvasLayer.has_node("LoadingLabel"):
+		$CanvasLayer/LoadingLabel.visible = false
 	$ErrorScreen.show_error(message)
 
 

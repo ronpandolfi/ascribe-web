@@ -78,7 +78,7 @@ func test_shader_loads_as_a_material() -> void:
 # exactly those rays.
 func test_march_step_widens_to_cover_the_interval() -> void:
 	var src := _source()
-	assert_str(src).contains("float march_step = max(step_size, span / float(max_steps));")
+	assert_str(src).contains("float march_step = max(eff_step_size, span / float(max_steps));")
 	assert_str(src).contains("float step_ratio = current_step / REFERENCE_STEP;")
 	assert_str(src).contains("t_near + jitter * march_step")
 

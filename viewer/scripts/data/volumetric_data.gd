@@ -151,7 +151,7 @@ func set_from_bytes(preamble: Dictionary, body: PackedByteArray, offset: int) ->
 ## stall the main thread during decode.
 ##
 ## Returns true on success, false on error (malformed preamble, body-too-short, bad dtype).
-func build_async(preamble: Dictionary, body: PackedByteArray, offset: int, tree: SceneTree) -> bool:
+func build_async(preamble: Dictionary, body: PackedByteArray, offset: int, tree: SceneTree, on_progress: Callable = Callable()) -> bool:
 	if preamble.get("type", "") != "volume":
 		push_error("WebVolumetricData.build_async: preamble.type is not 'volume'")
 		return false
@@ -196,8 +196,14 @@ func build_async(preamble: Dictionary, body: PackedByteArray, offset: int, tree:
 			push_error("WebVolumetricData.build_async: failed to create image for slice %d" % z)
 			return false
 		images.append(img)
-		if (z + 1) % 8 == 0 and tree != null:
-			await tree.process_frame
+		if (z + 1) % 8 == 0:
+			if on_progress.is_valid():
+				on_progress.call(float(z + 1) / float(depth))
+			if tree != null:
+				await tree.process_frame
+
+	if on_progress.is_valid():
+		on_progress.call(1.0)
 
 	var tex := ImageTexture3D.new()
 	tex.create(images[0].get_format(), width, height, depth, false, images)

@@ -63,7 +63,7 @@ func _join(base_url: String, name: String) -> String:
 
 func _load_from_res(base_url: String) -> void:
 	var manifest_path := _join(base_url, MANIFEST_FILE)
-	progress.emit("manifest", 0.0)
+	progress.emit("Loading manifest...", 0.0)
 
 	if not FileAccess.file_exists(manifest_path):
 		failed.emit("failed to read %s: file not found" % [manifest_path])
@@ -75,18 +75,20 @@ func _load_from_res(base_url: String) -> void:
 		failed.emit("%s: invalid JSON" % [MANIFEST_FILE])
 		return
 
-	progress.emit("manifest", 1.0)
-	await _finish_load(manifest, func(rel_path: String) -> Variant:
+	progress.emit("Manifest loaded", 0.05)
+	await _finish_load(manifest, func(rel_path: String, on_dl_progress: Callable = Callable()) -> Variant:
 		var full_path := _join(base_url, rel_path)
 		if not FileAccess.file_exists(full_path):
 			return {"error": "failed to read %s: file not found" % [rel_path]}
+		if on_dl_progress.is_valid():
+			on_dl_progress.call(1.0, 0, 0)
 		return {"body": FileAccess.get_file_as_bytes(full_path)}
 	)
 
 
 func _load_from_http(base_url: String) -> void:
 	var manifest_url := _join(base_url, MANIFEST_FILE)
-	progress.emit("manifest", 0.0)
+	progress.emit("Loading manifest...", 0.0)
 
 	var manifest_result := await _http_get(manifest_url)
 	if manifest_result.has("error"):
@@ -98,16 +100,16 @@ func _load_from_http(base_url: String) -> void:
 		failed.emit("%s: invalid JSON" % [MANIFEST_FILE])
 		return
 
-	progress.emit("manifest", 1.0)
-	await _finish_load(manifest, func(rel_path: String) -> Variant:
-		var result := await _http_get(_join(base_url, rel_path))
+	progress.emit("Manifest loaded", 0.05)
+	await _finish_load(manifest, func(rel_path: String, on_dl_progress: Callable = Callable()) -> Variant:
+		var result := await _http_get(_join(base_url, rel_path), on_dl_progress)
 		if result.has("error"):
 			return {"error": "failed to fetch %s: %s" % [rel_path, result["error"]]}
 		return result
 	)
 
 
-## Shared validation + specimen decode loop, parameterized by a `fetch(rel_path) -> Dictionary`
+## Shared validation + specimen decode loop, parameterized by a `fetch(rel_path, on_progress)`
 ## callable that returns {"body": PackedByteArray} or {"error": String}.
 func _finish_load(manifest: Dictionary, fetch: Callable) -> void:
 	var err := validate_manifest(manifest)
@@ -115,34 +117,68 @@ func _finish_load(manifest: Dictionary, fetch: Callable) -> void:
 		failed.emit("%s: %s" % [MANIFEST_FILE, err])
 		return
 
-	var specimens := {}
-	for spec in manifest["specimens"]:
-		var spec_id: String = spec.get("id", "")
-		var rel_path: String = spec.get("data", "")
-		progress.emit(spec_id, 0.0)
+	var specimens_list: Array = manifest.get("specimens", [])
+	var total_specimens: int = specimens_list.size()
+	if total_specimens == 0:
+		loaded.emit(manifest, {})
+		return
 
-		var fetched = await fetch.call(rel_path)
+	var specimens := {}
+	for i in range(total_specimens):
+		var spec: Dictionary = specimens_list[i]
+		var spec_id: String = spec.get("id", "specimen_%d" % i)
+		var rel_path: String = spec.get("data", "")
+
+		# Allocate a slice of total [0.05, 1.0] for this specimen:
+		# Download: 75% of the specimen's time
+		# Decode:   25% of the specimen's time
+		var spec_base := 0.05 + 0.95 * (float(i) / float(total_specimens))
+		var spec_span := 0.95 / float(total_specimens)
+		var dl_span := spec_span * 0.75
+		var decode_span := spec_span * 0.25
+
+		var dl_callback := func(dl_fraction: float, downloaded: int, total: int) -> void:
+			var overall_ratio := spec_base + dl_fraction * dl_span
+			var label: String
+			if total > 0:
+				var dl_mb := float(downloaded) / 1048576.0
+				var tot_mb := float(total) / 1048576.0
+				label = "Downloading %s (%.1f / %.1f MB - %.0f%%)" % [spec_id, dl_mb, tot_mb, dl_fraction * 100.0]
+			else:
+				label = "Downloading %s (%.0f%%)" % [spec_id, dl_fraction * 100.0]
+			progress.emit(label, overall_ratio)
+
+		progress.emit("Downloading %s (0%%)" % [spec_id], spec_base)
+
+		var fetched = await fetch.call(rel_path, dl_callback)
 		if fetched.has("error"):
 			failed.emit(fetched["error"])
 			return
 
 		var body: PackedByteArray = fetched["body"]
-		progress.emit(spec_id, 0.5)
+		var decode_base := spec_base + dl_span
 
-		var obj = await _decode_specimen(spec, body)
+		var decode_callback := func(dec_fraction: float) -> void:
+			var overall_ratio := decode_base + dec_fraction * decode_span
+			var label := "Preparing volume (%.0f%%)" % [dec_fraction * 100.0]
+			progress.emit(label, overall_ratio)
+
+		progress.emit("Preparing %s..." % [spec_id], decode_base)
+
+		var obj = await _decode_specimen(spec, body, decode_callback)
 		if obj == null:
 			failed.emit("failed to decode %s: invalid or unsupported envelope" % [rel_path])
 			return
 
 		specimens[spec_id] = obj
-		progress.emit(spec_id, 1.0)
 
+	progress.emit("Ready", 1.0)
 	loaded.emit(manifest, specimens)
 
 
 ## Decodes one specimen's envelope body into a WebVolumetricData or WebMeshData, or null on
 ## any failure. Volume decode batches across frames via WebVolumetricData.build_async.
-func _decode_specimen(spec: Dictionary, body: PackedByteArray) -> Variant:
+func _decode_specimen(spec: Dictionary, body: PackedByteArray, on_progress: Callable = Callable()) -> Variant:
 	var parsed := BinaryEnvelope.parse(body)
 	if parsed.has("error"):
 		push_error(parsed["error"])
@@ -154,12 +190,17 @@ func _decode_specimen(spec: Dictionary, body: PackedByteArray) -> Variant:
 
 	if kind == "volume":
 		var vol := WebVolumetricData.new()
-		var ok: bool = await vol.build_async(preamble, body, offset, get_tree())
+		var ok: bool = await vol.build_async(preamble, body, offset, get_tree(), on_progress)
 		return vol if ok else null
 
 	if kind == "mesh":
+		if on_progress.is_valid():
+			on_progress.call(0.5)
 		var mesh := WebMeshData.new()
-		return mesh if mesh.set_from_bytes(preamble, body, offset) else null
+		var ok: bool = mesh.set_from_bytes(preamble, body, offset)
+		if on_progress.is_valid():
+			on_progress.call(1.0)
+		return mesh if ok else null
 
 	push_error("BundleLoader: unknown specimen type '%s'" % [kind])
 	return null
@@ -181,19 +222,51 @@ func make_request() -> HTTPRequest:
 
 ## Performs a single HTTPRequest GET, returning {"body": PackedByteArray} on 2xx, or
 ## {"error": String} otherwise. Always relative-safe: the caller passes a same-origin URL.
-func _http_get(url: String) -> Dictionary:
+## When `on_progress` is provided, it is called with `(ratio: float, downloaded: int, total: int)`
+## as bytes arrive.
+func _http_get(url: String, on_progress: Callable = Callable()) -> Dictionary:
 	var request := make_request()
 	add_child(request)
+
+	var completed := false
+	var response_result: Array = []
+	request.request_completed.connect(func(res: int, code: int, headers: PackedStringArray, body: PackedByteArray):
+		completed = true
+		response_result = [res, code, headers, body]
+	)
+
 	var start_err := request.request(url)
 	if start_err != OK:
 		request.queue_free()
 		return {"error": "could not start request (error %d)" % [start_err]}
 
-	var result: Array = await request.request_completed
+	var tree := get_tree()
+	while not completed:
+		if on_progress.is_valid():
+			var downloaded := request.get_downloaded_bytes()
+			var total := request.get_body_size()
+			if total > 0 and downloaded >= 0:
+				var fraction := clampf(float(downloaded) / float(total), 0.0, 1.0)
+				on_progress.call(fraction, downloaded, total)
+		if tree != null:
+			await tree.process_frame
+		else:
+			break
+
+	if not completed:
+		response_result = await request.request_completed
+
 	request.queue_free()
 
-	var response_code: int = result[1]
-	var body: PackedByteArray = result[3]
+	if response_result.size() < 4:
+		return {"error": "request failed or aborted"}
+
+	var response_code: int = response_result[1]
+	var body: PackedByteArray = response_result[3]
 	if response_code < 200 or response_code >= 300:
 		return {"error": "HTTP %d" % [response_code]}
+
+	if on_progress.is_valid():
+		on_progress.call(1.0, body.size(), body.size())
+
 	return {"body": body}

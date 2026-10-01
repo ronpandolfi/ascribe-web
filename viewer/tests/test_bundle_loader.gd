@@ -88,3 +88,50 @@ func test_requests_do_not_ask_godot_to_inflate_gzip() -> void:
 	add_child(loader)
 	var request: HTTPRequest = auto_free(loader.make_request())
 	assert_bool(request.accept_gzip).is_false()
+
+func test_load_bundle_emits_granular_progress_stages() -> void:
+	var loader: BundleLoader = auto_free(BundleLoader.new())
+	add_child(loader)
+
+	var stages: Array[String] = []
+	var ratios: Array[float] = []
+	var state := {"loaded": false, "failed": false}
+
+	loader.progress.connect(func(st: String, r: float) -> void:
+		stages.append(st)
+		ratios.append(r)
+	)
+	loader.loaded.connect(func(_m, _s): state["loaded"] = true)
+	loader.failed.connect(func(_err): state["failed"] = true)
+
+	loader.load_bundle(FIXTURE)
+	await _wait_until(state, "loaded")
+
+	assert_that(state["loaded"]).is_true()
+	assert_that(ratios.size()).is_greater(3)
+	assert_float(ratios.front()).is_equal(0.0)
+	assert_float(ratios.back()).is_equal(1.0)
+	# Check that stages contain descriptive stage names
+	var joined := " ".join(stages)
+	assert_str(joined).contains("Downloading")
+	assert_str(joined).contains("Preparing")
+	assert_str(joined).contains("Ready")
+
+
+func test_volumetric_data_build_async_reports_slice_progress() -> void:
+	var bytes := FileAccess.get_file_as_bytes("res://tests/fixtures/tiny_bundle/specimen_0.bin")
+	var parsed := BinaryEnvelope.parse(bytes)
+	var vol := WebVolumetricData.new()
+	var reported: Array[float] = []
+
+	var ok: bool = await vol.build_async(
+		parsed["preamble"],
+		bytes,
+		parsed["offset"],
+		get_tree(),
+		func(p: float) -> void: reported.append(p)
+	)
+
+	assert_bool(ok).is_true()
+	assert_that(reported.size()).is_greater_equal(2)
+	assert_float(reported.back()).is_equal(1.0)

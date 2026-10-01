@@ -303,3 +303,19 @@ func test_decoupled_volume_pass_in_flat_and_xr() -> void:
 
 	main._on_session_ended()
 	vp.use_xr = false
+func test_loading_screen_elements_and_visibility() -> void:
+	var main := await _make_main()
+	var progress_bar: ProgressBar = main.get_node("CanvasLayer/ProgressBar")
+	var loading_label: Label = main.get_node("CanvasLayer/LoadingLabel")
+	assert_that(progress_bar).is_not_null()
+	assert_that(loading_label).is_not_null()
+
+	# Progress callback updates bar and label text
+	main._on_progress("Downloading specimen_0 (45%)", 0.45)
+	assert_float(progress_bar.value).is_equal_approx(45.0, 0.1)
+	assert_str(loading_label.text).is_equal("Downloading specimen_0 (45%)")
+
+	# On loaded hides both
+	main._on_loaded({"version": 1, "title": "T", "specimens": []}, {})
+	assert_bool(progress_bar.visible).is_false()
+	assert_bool(loading_label.visible).is_false()
