@@ -186,6 +186,8 @@ func _wire_display_panels() -> void:
 	var on_display_changed := func(display: Dictionary) -> void:
 		_user_touched_quality = true
 		$SpecimenStage.apply_display(display)
+		if get_viewport().use_xr and (display.has("ffr_enabled") or display.has("ffr_level")):
+			_apply_webxr_fixed_foveation(bool(display.get("ffr_enabled", true)), float(display.get("ffr_level", 1.0)))
 	$CanvasLayer/DisplaySettingsPanel.display_changed.connect(on_display_changed)
 	$XROrigin3D/PanelViewport/DisplaySettingsPanel.display_changed.connect(on_display_changed)
 
@@ -486,6 +488,8 @@ func _on_session_started() -> void:
 	$CanvasLayer/EnterVR.visible = false
 	$CanvasLayer/Fullscreen.visible = false
 	_apply_quality_tier()
+	var active_display: Dictionary = $CanvasLayer/DisplaySettingsPanel.get_display()
+	_apply_webxr_fixed_foveation(bool(active_display.get("ffr_enabled", true)), float(active_display.get("ffr_level", 1.0)))
 
 
 func _on_session_ended() -> void:
@@ -564,6 +568,47 @@ func _update_fullscreen_button_layout() -> void:
 func _on_window_size_changed() -> void:
 	_update_fullscreen_button()
 	_update_fullscreen_button_layout()
+
+## Configures hardware Fixed Foveated Rendering (FFR) via WebXR on Meta Quest.
+## Level ranges from 0.0 (disabled) to 1.0 (maximum peripheral reduction).
+func _apply_webxr_fixed_foveation(enabled: bool, level: float) -> void:
+	if not OS.has_feature("web"):
+		return
+	var fov_val: float = clampf(level if enabled else 0.0, 0.0, 1.0)
+	var js: String = """
+	(function(lvl) {
+		try {
+			var applied = false;
+			if (typeof GodotWebXR !== 'undefined') {
+				if (GodotWebXR.layer && 'fixedFoveation' in GodotWebXR.layer) {
+					GodotWebXR.layer.fixedFoveation = lvl;
+					applied = true;
+				}
+				if (GodotWebXR.session && GodotWebXR.session.renderState) {
+					var rs = GodotWebXR.session.renderState;
+					if (rs.baseLayer && 'fixedFoveation' in rs.baseLayer) {
+						rs.baseLayer.fixedFoveation = lvl;
+						applied = true;
+					}
+					if (rs.layers && Array.isArray(rs.layers)) {
+						for (var i = 0; i < rs.layers.length; i++) {
+							if ('fixedFoveation' in rs.layers[i]) {
+								rs.layers[i].fixedFoveation = lvl;
+								applied = true;
+							}
+						}
+					}
+				}
+			}
+			return applied;
+		} catch (e) {
+			console.warn('Failed to set WebXR fixedFoveation:', e);
+			return false;
+		}
+	})(%.2f);
+	""" % fov_val
+	JavaScriptBridge.eval(js, true)
+
 
 ## Dynamically scales 3D viewport rendering resolution based on camera distance to the staged
 ## specimen bounding box surface. When far away, resolution scale is high (crisp overview, few

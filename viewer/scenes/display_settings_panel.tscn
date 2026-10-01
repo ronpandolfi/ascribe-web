@@ -200,6 +200,26 @@ layout_mode = 2
 max_value = 8.0
 step = 0.5
 
+[node name="XRHeader" type="Label" parent="VBox/AdvancedScroll/AdvancedVBox"]
+layout_mode = 2
+text = "-- XR Performance --"
+horizontal_alignment = 1
+
+[node name="FFREnabled" type="CheckBox" parent="VBox/AdvancedScroll/AdvancedVBox"]
+layout_mode = 2
+button_pressed = true
+text = "Fixed Foveation (FFR)"
+
+[node name="FFRLevelLabel" type="Label" parent="VBox/AdvancedScroll/AdvancedVBox"]
+layout_mode = 2
+text = "FFR Level: 1.0"
+
+[node name="FFRLevel" type="HSlider" parent="VBox/AdvancedScroll/AdvancedVBox"]
+layout_mode = 2
+max_value = 1.0
+step = 0.1
+value = 1.0
+
 [node name="ViewportHeader" type="Label" parent="VBox/AdvancedScroll/AdvancedVBox"]
 layout_mode = 2
 text = "-- Flat Viewport --"

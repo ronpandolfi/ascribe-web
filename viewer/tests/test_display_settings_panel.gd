@@ -121,6 +121,8 @@ func test_set_display_sets_advanced_properties_without_emitting() -> void:
 		"scaling_3d_scale": 0.75,
 		"adaptive_steps": false,
 		"adaptive_res_flat": false,
+		"ffr_enabled": false,
+		"ffr_level": 0.5,
 	})
 
 	var d := panel.get_display()
@@ -138,4 +140,6 @@ func test_set_display_sets_advanced_properties_without_emitting() -> void:
 	assert_float(d["scaling_3d_scale"]).is_equal_approx(0.75, 0.01)
 	assert_that(d["adaptive_steps"]).is_false()
 	assert_that(d["adaptive_res_flat"]).is_false()
+	assert_that(d["ffr_enabled"]).is_false()
+	assert_float(d["ffr_level"]).is_equal_approx(0.5, 0.01)
 

@@ -53,6 +53,10 @@ var _advanced_open := false
 @onready var _lateral_dither_label: Label = $VBox/AdvancedScroll/AdvancedVBox/LateralDitherLabel
 @onready var _lateral_dither_slider: HSlider = $VBox/AdvancedScroll/AdvancedVBox/LateralDither
 
+@onready var _ffr_check: CheckBox = $VBox/AdvancedScroll/AdvancedVBox/FFREnabled
+@onready var _ffr_label: Label = $VBox/AdvancedScroll/AdvancedVBox/FFRLevelLabel
+@onready var _ffr_slider: HSlider = $VBox/AdvancedScroll/AdvancedVBox/FFRLevel
+
 @onready var _scale_3d_label: Label = $VBox/AdvancedScroll/AdvancedVBox/Scale3DLabel
 @onready var _scale_3d_slider: HSlider = $VBox/AdvancedScroll/AdvancedVBox/Scale3D
 @onready var _adaptive_flat_check: CheckBox = $VBox/AdvancedScroll/AdvancedVBox/AdaptiveResFlat
@@ -161,6 +165,13 @@ func _ready() -> void:
 		_emit_changed()
 	)
 
+	# XR controls
+	_ffr_check.toggled.connect(func(_p): _emit_changed())
+	_ffr_slider.value_changed.connect(func(v):
+		_update_label(_ffr_label, "FFR Level: %.1f" % v)
+		_emit_changed()
+	)
+
 	# Viewport controls
 	_scale_3d_slider.value_changed.connect(func(v):
 		_update_label(_scale_3d_label, "Flat 3D Scale: %.2f" % v)
@@ -203,6 +214,7 @@ func _refresh_labels() -> void:
 	_update_label(_lut_substeps_label, "LUT Sub-steps: %d" % int(_lut_substeps_slider.value))
 	_update_label(_jitter_label, "Ray Start Jitter: %.1f" % _jitter_slider.value)
 	_update_label(_lateral_dither_label, "Lateral Dither: %.1f" % _lateral_dither_slider.value)
+	_update_label(_ffr_label, "FFR Level: %.1f" % _ffr_slider.value)
 	_update_label(_scale_3d_label, "Flat 3D Scale: %.2f" % _scale_3d_slider.value)
 
 
@@ -240,6 +252,8 @@ func get_display() -> Dictionary:
 		"lut_substeps": lut_sub,
 		"jitter_amount": float(_jitter_slider.value if _jitter_slider else 1.0),
 		"lateral_jitter": float(_lateral_dither_slider.value if _lateral_dither_slider else 0.0),
+		"ffr_enabled": _ffr_check.button_pressed if _ffr_check else true,
+		"ffr_level": float(_ffr_slider.value if _ffr_slider else 1.0),
 		"scaling_3d_scale": float(_scale_3d_slider.value if _scale_3d_slider else 1.0),
 		"adaptive_res_flat": _adaptive_flat_check.button_pressed if _adaptive_flat_check else true,
 	}
@@ -311,6 +325,12 @@ func set_display(display: Dictionary) -> void:
 		var d := float(display["lateral_jitter"])
 		_lateral_dither_slider.set_value_no_signal(d)
 		_update_label(_lateral_dither_label, "Lateral Dither: %.1f" % d)
+	if display.has("ffr_enabled") and _ffr_check:
+		_ffr_check.set_pressed_no_signal(bool(display["ffr_enabled"]))
+	if display.has("ffr_level") and _ffr_slider:
+		var lvl := float(display["ffr_level"])
+		_ffr_slider.set_value_no_signal(lvl)
+		_update_label(_ffr_label, "FFR Level: %.1f" % lvl)
 	if display.has("scaling_3d_scale") and _scale_3d_slider:
 		var sc := float(display["scaling_3d_scale"])
 		_scale_3d_slider.set_value_no_signal(sc)

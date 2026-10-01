@@ -239,3 +239,18 @@ func test_adaptive_step_budget_in_xr() -> void:
 
 	main._on_session_ended()
 	vp.use_xr = false
+
+func test_fixed_foveation_applied_on_session_start_and_panel_change() -> void:
+	var main := await _make_main()
+	var panel: DisplaySettingsPanel = main.get_node("CanvasLayer/DisplaySettingsPanel")
+
+	main._on_session_started()
+	# Can call safely without crash even outside web environment
+	main._apply_webxr_fixed_foveation(true, 1.0)
+	main._apply_webxr_fixed_foveation(false, 0.0)
+
+	panel.set_display({"ffr_enabled": false, "ffr_level": 0.5})
+	assert_that(panel.get_display()["ffr_enabled"]).is_false()
+	assert_float(panel.get_display()["ffr_level"]).is_equal_approx(0.5, 0.01)
+
+	main._on_session_ended()
