@@ -235,7 +235,7 @@ func _wire_story_panels() -> void:
 		var data = _specimens.get(specimen_id, null)
 		if data == null:
 			return
-		var spec_display := _display_for_specimen(specimen_id)
+		var spec_display := _display_for_staging(data, _display_for_specimen(specimen_id))
 		$SpecimenStage.stage(specimen_id, data, spec_display)
 		_set_panels_specimen_type(data)
 		_last_stage_pos = $SpecimenStage.global_position
@@ -254,6 +254,18 @@ func _wire_story_panels() -> void:
 func _update_headlight() -> void:
 	var cam: Node3D = $XROrigin3D/XRCamera3D if get_viewport().use_xr else $Camera3D
 	$Headlight.global_basis = cam.global_basis * Basis.from_euler(Vector3(-0.35, -0.45, 0.0))
+
+
+## A mesh's display with every look key filled in from the material's defaults. Bundled meshes
+## carry only the keys that were set at bake time, and `_current_display` still holds the
+## previous specimen's look, so without this a story page staging a mesh would inherit the last
+## specimen's opacity, colour, etc. Volumes pass through unchanged.
+func _display_for_staging(data: RefCounted, display: Dictionary) -> Dictionary:
+	if not (data is WebMeshData):
+		return display
+	var filled := MeshSurfaceMaterial.resolved(display)
+	filled["shader"] = MeshSurfaceMaterial.shader_name(display)
+	return display.merged(filled, true)
 
 
 ## Shows the mesh or volume controls on both panels, to match what was just staged.
@@ -471,7 +483,7 @@ func _on_loaded(manifest: Dictionary, specimens: Dictionary) -> void:
 		$ErrorScreen.show_error("Specimen '%s' failed to decode" % [spec_id])
 		return
 
-	var spec_display: Dictionary = first_spec.get("display", {})
+	var spec_display: Dictionary = _display_for_staging(data, first_spec.get("display", {}))
 	if spec_display.has("max_steps"):
 		_authored_quality = {
 			"max_steps": int(spec_display["max_steps"]),

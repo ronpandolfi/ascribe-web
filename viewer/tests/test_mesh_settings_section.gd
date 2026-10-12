@@ -78,3 +78,11 @@ func test_unmatched_colour_selects_no_swatch_and_is_kept() -> void:
 	assert_str(section.get_display()["color"]).is_equal("#123456")
 	section.set_display({"color": "#C0392B"})
 	assert_bool((section.get_node("Surface/Swatches/Swatch_c0392b") as Button).button_pressed).is_true()
+
+
+# Final review: a hand-edited invalid colour was shown and saved back verbatim, so edit mode's
+# save failed schema validation even if only another slider was moved.
+func test_invalid_colour_is_normalised_to_the_default() -> void:
+	var section := _make()
+	section.set_display({"color": "gold"})
+	assert_str(section.get_display()["color"]).is_equal("#d4af37")

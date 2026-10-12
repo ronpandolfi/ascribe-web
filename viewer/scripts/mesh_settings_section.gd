@@ -96,7 +96,9 @@ func set_display(display: Dictionary) -> void:
 		_shader_option.select(MeshSurfaceMaterial.SHADERS.find(
 			MeshSurfaceMaterial.shader_name(display)))
 	if display.has("color"):
-		_color = str(display["color"]).to_lower()
+		# Through resolved() so an invalid hand-edited colour shows and saves as the default the
+		# mesh actually renders, rather than failing schema validation on save.
+		_color = MeshSurfaceMaterial.resolved(display)["color"]
 		_color_picker.color = Color.from_string(_color, _color_picker.color)
 	var s := MeshSurfaceMaterial.resolved(display)
 	for key in _sliders:

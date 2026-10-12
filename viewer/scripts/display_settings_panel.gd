@@ -103,6 +103,8 @@ func _ready() -> void:
 	$VBox.add_child(_mesh_section)
 	$VBox.move_child(_mesh_section, _advanced_scroll.get_index() + 1)
 	_mesh_section.changed.connect(_emit_changed)
+	# Picking a shader shows or hides the surface controls, so the desktop panel must follow.
+	_mesh_section.changed.connect(_resize_desktop)
 
 	_gamma_slider.min_value = 0.1
 	_gamma_slider.max_value = 4.0
@@ -381,6 +383,8 @@ func get_display() -> Dictionary:
 func set_display(display: Dictionary) -> void:
 	# Keep the mesh section in step whichever type is staged: both panels sync through here.
 	_mesh_section.set_display(display)
+	if _specimen_type == "mesh":
+		_resize_desktop()
 	if display.has("gamma"):
 		var g := float(display["gamma"])
 		$VBox/Gamma.set_value_no_signal(g)

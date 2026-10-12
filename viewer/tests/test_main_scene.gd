@@ -617,3 +617,31 @@ func test_headlight_follows_the_camera() -> void:
 		assert_float(cam_fwd.dot(light_fwd)).is_greater(0.7)
 		cam.yaw += PI
 		cam._sync_transform()
+
+
+# Final review: a story page staging a mesh merged the previous specimen's look (opacity,
+# colour, ...) over the mesh's own, because bundled meshes only carry the keys that were given.
+func test_staging_a_mesh_fills_in_its_own_defaults() -> void:
+	var main := await _make_main()
+	var d: Dictionary = main.call("_display_for_staging", WebMeshData.new(), {"shader": "surface"})
+	assert_float(d["opacity"]).is_equal_approx(1.0, 0.001)
+	assert_str(d["color"]).is_equal("#d4af37")
+	assert_bool(d["inner_surfaces"]).is_false()
+	# Volumes are passed through untouched.
+	var v: Dictionary = main.call("_display_for_staging", WebVolumetricData.new(), {"gamma": 1.2})
+	assert_that(v).is_equal({"gamma": 1.2})
+
+
+# Final review: the desktop panel was sized once per specimen, so picking Surface after a
+# fixed-look shader spilled the surface controls below the panel's background.
+func test_mesh_panel_resizes_when_the_shader_changes() -> void:
+	var main := await _make_main()
+	var panel: DisplaySettingsPanel = main.get_node("CanvasLayer/DisplaySettingsPanel")
+	# Sized while a fixed-look shader hides the surface controls (e.g. a second mesh after a pearl one).
+	panel.set_display({"shader": "pearl"})
+	panel.set_specimen_type("mesh")
+	var picker: OptionButton = panel.get_node("VBox/MeshSection/Shader")
+	picker.select(0)
+	picker.item_selected.emit(0)
+	var vbox: Control = panel.get_node("VBox")
+	assert_float(panel.size.y).is_greater_equal(vbox.get_combined_minimum_size().y + 20.0)
