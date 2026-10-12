@@ -575,3 +575,15 @@ func test_advanced_settings_never_overlap_the_story_panel() -> void:
 			.is_less_equal(story.get_global_rect().position.x)
 		toggle.emit_signal("pressed")
 		await get_tree().process_frame
+
+
+func test_mesh_panel_stays_clear_of_the_story_panel() -> void:
+	var main := await _make_main()
+	var panel: DisplaySettingsPanel = main.get_node("CanvasLayer/DisplaySettingsPanel")
+	var story: Control = main.get_node("CanvasLayer/StoryPanel")
+	panel.set_specimen_type("mesh")
+	await get_tree().process_frame
+	assert_float(panel.get_global_rect().end.x).is_less_equal(story.get_global_rect().position.x)
+	# Tall enough for every mesh control: the VBox's minimum height fits inside the panel.
+	var vbox: Control = panel.get_node("VBox")
+	assert_float(panel.size.y).is_greater_equal(vbox.get_combined_minimum_size().y + 20.0)

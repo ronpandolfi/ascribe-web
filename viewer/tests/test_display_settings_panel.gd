@@ -205,3 +205,54 @@ func test_grab_drag_scroll_moves_scroll_bar() -> void:
 	assert_float(v_bar.value).is_greater(10.0)
 
 
+func test_mesh_mode_shows_only_the_mesh_section() -> void:
+	var panel := _make_panel()
+	var mesh_section: Control = panel.get_node("VBox/MeshSection")
+	assert_bool(mesh_section.visible).is_false()
+	assert_bool((panel.get_node("VBox/Gamma") as Control).visible).is_true()
+
+	panel.set_specimen_type("mesh")
+	assert_bool(mesh_section.visible).is_true()
+	for n in ["GammaLabel", "Gamma", "OpacityLabel", "Opacity", "QualityLabel", "Quality",
+			"AdvancedToggle", "AdvancedScroll"]:
+		assert_bool((panel.get_node("VBox/" + n) as Control).visible).is_false()
+
+	panel.set_specimen_type("volume")
+	assert_bool(mesh_section.visible).is_false()
+	assert_bool((panel.get_node("VBox/Gamma") as Control).visible).is_true()
+
+
+# Edit mode merges get_display() into the specimen's manifest entry; a mesh must not come back
+# carrying every volume quality key.
+func test_mesh_mode_display_has_only_mesh_keys() -> void:
+	var panel := _make_panel()
+	panel.set_specimen_type("mesh")
+	var keys := panel.get_display().keys()
+	keys.sort()
+	assert_array(keys).is_equal(["color", "inner_surfaces", "metallic", "opacity", "rim",
+		"roughness", "shader"])
+
+
+func test_mesh_section_changes_emit_display_changed() -> void:
+	var panel := _make_panel()
+	panel.set_specimen_type("mesh")
+	var seen: Array[Dictionary] = []
+	panel.display_changed.connect(func(d: Dictionary): seen.append(d))
+	(panel.get_node("VBox/MeshSection/Surface/Metallic") as HSlider).value = 0.7
+	assert_int(seen.size()).is_equal(1)
+	assert_float(seen[0]["metallic"]).is_equal_approx(0.7, 0.001)
+
+
+func test_set_display_reaches_the_mesh_section() -> void:
+	var panel := _make_panel()
+	panel.set_specimen_type("mesh")
+	panel.set_display({"color": "#8e44ad", "rim": 0.0})
+	var d := panel.get_display()
+	assert_str(d["color"]).is_equal("#8e44ad")
+	assert_float(d["rim"]).is_equal_approx(0.0, 0.001)
+
+
+func test_vr_panel_uses_swatches() -> void:
+	var panel := _make_panel()
+	panel.set_exit_vr_visible(true)
+	assert_bool((panel.get_node("VBox/MeshSection/Surface/Swatches") as Control).visible).is_true()

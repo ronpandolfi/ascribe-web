@@ -15,6 +15,13 @@ const MAX_STEPS := Quality.MAX_STEPS
 
 var is_vr := false
 var _advanced_open := false
+## "volume" or "mesh": which controls the panel shows, and what get_display() reports.
+var _specimen_type := "volume"
+var _mesh_section: MeshSettingsSection
+
+## The always-visible volume controls, hidden while a mesh is staged.
+const VOLUME_NODES := ["GammaLabel", "Gamma", "OpacityLabel", "Opacity", "QualityLabel",
+	"Quality", "AdvancedToggle"]
 
 # Onready node references for basic controls
 @onready var _gamma_label: Label = $VBox/GammaLabel
@@ -91,6 +98,12 @@ var _motion_step_floor_explicit: int = -1
 
 
 func _ready() -> void:
+	_mesh_section = MeshSettingsSection.new()
+	_mesh_section.visible = false
+	$VBox.add_child(_mesh_section)
+	$VBox.move_child(_mesh_section, _advanced_scroll.get_index() + 1)
+	_mesh_section.changed.connect(_emit_changed)
+
 	_gamma_slider.min_value = 0.1
 	_gamma_slider.max_value = 4.0
 	_gamma_slider.value = 1.0
@@ -252,14 +265,30 @@ func _on_advanced_toggled() -> void:
 	_resize_desktop()
 
 
+## Shows the mesh controls or the volume controls, to match the staged specimen.
+func set_specimen_type(type: String) -> void:
+	_specimen_type = "mesh" if type == "mesh" else "volume"
+	var is_mesh := _specimen_type == "mesh"
+	for n in VOLUME_NODES:
+		($VBox.get_node(n) as Control).visible = not is_mesh
+	_advanced_scroll.visible = _advanced_open and not is_mesh
+	_mesh_section.visible = is_mesh
+	_resize_desktop()
+
+
 ## Sizes the desktop panel to what it is showing. The panel is right-anchored beside the story
 ## panel, so it grows leftward: widening it by moving its right edge pushed it into the story
 ## panel. The in-VR instance fills its SubViewport and is left alone.
 func _resize_desktop() -> void:
 	if is_vr or not (get_parent() is CanvasLayer):
 		return
-	var width := 280.0 if _advanced_open else 240.0
-	var height := 560.0 if _advanced_open else 260.0
+	var width := 240.0
+	var height := 260.0
+	if _specimen_type == "mesh":
+		height = $VBox.get_combined_minimum_size().y + 20.0
+	elif _advanced_open:
+		width = 280.0
+		height = 560.0
 	offset_left = offset_right - width
 	offset_bottom = offset_top + height
 
@@ -302,6 +331,8 @@ func clear_save_status() -> void:
 
 
 func get_display() -> Dictionary:
+	if _specimen_type == "mesh":
+		return _mesh_section.get_display()
 	var steps: int = int(_max_steps_slider.value if _max_steps_slider else $VBox/Quality.value)
 	var step_sz: float = float(_step_size_slider.value if _step_size_slider else Quality.step_size_for(steps))
 	var lut_sub: int = int(_lut_substeps_slider.value if _lut_substeps_slider else (1 if is_vr else Quality.lut_substeps_for(steps)))
@@ -348,6 +379,8 @@ func get_display() -> Dictionary:
 
 
 func set_display(display: Dictionary) -> void:
+	# Keep the mesh section in step whichever type is staged: both panels sync through here.
+	_mesh_section.set_display(display)
 	if display.has("gamma"):
 		var g := float(display["gamma"])
 		$VBox/Gamma.set_value_no_signal(g)
@@ -474,6 +507,7 @@ func set_display(display: Dictionary) -> void:
 func set_exit_vr_visible(shown: bool) -> void:
 	$VBox/ExitVR.visible = shown
 	is_vr = shown
+	_mesh_section.set_vr(shown)
 
 
 func set_edit_enabled(enabled: bool) -> void:
