@@ -193,68 +193,81 @@ func _build_test_mesh_data() -> WebMeshData:
 	return md
 
 
-func test_stage_mesh_applies_glass_shader_by_default() -> void:
+func _staged_mesh(stage: SpecimenStage) -> MeshInstance3D:
+	for child in stage.get_children():
+		if child is MeshInstance3D:
+			return child
+	return null
+
+
+func test_stage_mesh_uses_the_surface_material_by_default() -> void:
 	var stage: SpecimenStage = auto_free(SpecimenStage.new())
 	add_child(stage)
-
-	var mesh_data := _build_test_mesh_data()
-	stage.stage("mesh_specimen_0", mesh_data, {})
+	stage.stage("mesh_specimen_0", _build_test_mesh_data(), {})
 
 	assert_that(stage.current_id).is_equal("mesh_specimen_0")
 	assert_that(_count_mesh_children(stage)).is_equal(1)
-
-	var mesh_child: MeshInstance3D = null
-	for child in stage.get_children():
-		if child is MeshInstance3D:
-			mesh_child = child
-	assert_that(mesh_child).is_not_null()
-
-	var mat: Material = mesh_child.get_surface_override_material(0)
-	assert_that(mat).is_not_null()
-	assert_that(mat is ShaderMaterial).is_true()
-	var sm := mat as ShaderMaterial
-	assert_that(sm.shader.resource_path).is_equal("res://shaders/glass.gdshader")
+	var mat: Material = _staged_mesh(stage).get_surface_override_material(0)
+	assert_that(mat is StandardMaterial3D).is_true()
+	assert_str("#" + (mat as StandardMaterial3D).albedo_color.to_html(false)).is_equal("#d4af37")
 
 
-func test_stage_mesh_applies_specified_shader() -> void:
+func test_stage_mesh_applies_a_legacy_shader() -> void:
 	var stage: SpecimenStage = auto_free(SpecimenStage.new())
 	add_child(stage)
+	stage.stage("mesh_specimen_crystal", _build_test_mesh_data(), {"shader": "crystal"})
 
-	var mesh_data := _build_test_mesh_data()
-	stage.stage("mesh_specimen_crystal", mesh_data, {"shader": "crystal"})
-
-	var mesh_child: MeshInstance3D = null
-	for child in stage.get_children():
-		if child is MeshInstance3D:
-			mesh_child = child
-	assert_that(mesh_child).is_not_null()
-
-	var mat: Material = mesh_child.get_surface_override_material(0)
-	assert_that(mat).is_not_null()
+	var mat: Material = _staged_mesh(stage).get_surface_override_material(0)
 	assert_that(mat is ShaderMaterial).is_true()
-	var sm := mat as ShaderMaterial
-	assert_that(sm.shader.resource_path).is_equal("res://shaders/crystal.gdshader")
+	assert_that((mat as ShaderMaterial).shader.resource_path).is_equal("res://shaders/crystal.gdshader")
 
 
-func test_apply_display_updates_mesh_shader() -> void:
+func test_retired_shader_names_render_with_surface() -> void:
 	var stage: SpecimenStage = auto_free(SpecimenStage.new())
 	add_child(stage)
+	stage.stage("old", _build_test_mesh_data(), {"shader": "glass"})
+	assert_that(_staged_mesh(stage).get_surface_override_material(0) is StandardMaterial3D).is_true()
 
-	var mesh_data := _build_test_mesh_data()
-	stage.stage("mesh_specimen", mesh_data, {"shader": "brick"})
 
-	var mesh_child: MeshInstance3D = null
-	for child in stage.get_children():
-		if child is MeshInstance3D:
-			mesh_child = child
-	assert_that(mesh_child).is_not_null()
+func test_apply_display_switches_between_legacy_and_surface() -> void:
+	var stage: SpecimenStage = auto_free(SpecimenStage.new())
+	add_child(stage)
+	stage.stage("m", _build_test_mesh_data(), {"shader": "crystal"})
+	var mesh := _staged_mesh(stage)
 
-	var mat1: ShaderMaterial = mesh_child.get_surface_override_material(0)
-	assert_that(mat1.shader.resource_path).is_equal("res://shaders/brick.gdshader")
+	stage.apply_display({"shader": "hologram"})
+	var holo: ShaderMaterial = mesh.get_surface_override_material(0)
+	assert_that(holo.shader.resource_path).is_equal("res://shaders/hologram.gdshader")
 
-	stage.apply_display({"shader": "water"})
-	var mat2: ShaderMaterial = mesh_child.get_surface_override_material(0)
-	assert_that(mat2.shader.resource_path).is_equal("res://shaders/water.gdshader")
+	stage.apply_display({"shader": "surface", "color": "#2a9d8f"})
+	var surf: StandardMaterial3D = mesh.get_surface_override_material(0)
+	assert_str("#" + surf.albedo_color.to_html(false)).is_equal("#2a9d8f")
+
+
+func test_surface_sliders_update_the_material_in_place() -> void:
+	var stage: SpecimenStage = auto_free(SpecimenStage.new())
+	add_child(stage)
+	stage.stage("m", _build_test_mesh_data(), {})
+	var mesh := _staged_mesh(stage)
+	var before: Material = mesh.get_surface_override_material(0)
+
+	stage.apply_display({"opacity": 0.4})
+	var after: StandardMaterial3D = mesh.get_surface_override_material(0)
+	assert_that(after).is_same(before)
+	assert_int(after.transparency).is_equal(BaseMaterial3D.TRANSPARENCY_ALPHA_DEPTH_PRE_PASS)
+
+
+# The motion-adaptive quality code sends a partial display every frame; on a mesh it must not
+# reset anything a bundle or the panel set.
+func test_partial_volume_display_leaves_the_mesh_look_alone() -> void:
+	var stage: SpecimenStage = auto_free(SpecimenStage.new())
+	add_child(stage)
+	stage.stage("m", _build_test_mesh_data(), {"color": "#c0392b", "opacity": 0.5})
+
+	stage.apply_display({"max_steps": 64, "step_size": 0.01, "lut_substeps": 1})
+	var mat: StandardMaterial3D = _staged_mesh(stage).get_surface_override_material(0)
+	assert_str("#" + mat.albedo_color.to_html(false)).is_equal("#c0392b")
+	assert_float(mat.albedo_color.a).is_equal_approx(0.5, 0.001)
 
 func test_advanced_display_parameters_reach_the_shader() -> void:
 	var stage: SpecimenStage = auto_free(SpecimenStage.new())

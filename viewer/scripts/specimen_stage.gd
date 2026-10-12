@@ -8,6 +8,15 @@ const VOLUME_SHADER := preload("res://shaders/volume_web.gdshader")
 
 var current_id: String = ""
 
+## Keys that change how a staged mesh looks. Anything else in a display dict (volume quality
+## settings the motion-adaptive code sends every frame) is ignored for meshes.
+const MESH_DISPLAY_KEYS := ["shader", "color", "opacity", "roughness", "metallic", "rim",
+	"inner_surfaces"]
+
+## The staged mesh's display, accumulated across apply_display() calls, so a partial update
+## (one slider) never resets the rest of the look.
+var _mesh_display: Dictionary = {}
+
 
 ## Stages `data` (a WebVolumetricData or WebMeshData) under `id`, applying `display` settings.
 ## Removes any previously staged specimen first.
@@ -29,11 +38,12 @@ func clear() -> void:
 		remove_child(child)
 		child.queue_free()
 	current_id = ""
+	_mesh_display = {}
 
 
 ## Applies display settings to the currently staged specimen.
-## For volumes: applies gamma/opacity/gradient/max_steps/step_size.
-## For meshes: applies shader material if "shader" is specified in display.
+## For volumes: shader uniforms (gamma, opacity, gradient, quality, ...).
+## For meshes: merges the look keys into the mesh's display and re-applies its material.
 func apply_display(display: Dictionary) -> void:
 	var mesh_instance := _current_mesh_instance()
 	if mesh_instance == null:
@@ -41,11 +51,14 @@ func apply_display(display: Dictionary) -> void:
 	var mat: Material = mesh_instance.get_surface_override_material(0)
 	if mat is ShaderMaterial and (mat as ShaderMaterial).shader == VOLUME_SHADER:
 		_apply_display_to_material(mat as ShaderMaterial, display)
-	elif display.has("shader"):
-		var shader_name: String = str(display.get("shader", "glass"))
-		var new_mat := _resolve_mesh_material(shader_name)
-		if new_mat != null:
-			mesh_instance.set_surface_override_material(0, new_mat)
+		return
+	var changed := false
+	for key in MESH_DISPLAY_KEYS:
+		if display.has(key) and _mesh_display.get(key) != display[key]:
+			_mesh_display[key] = display[key]
+			changed = true
+	if changed:
+		_apply_mesh_material(mesh_instance)
 
 
 func _current_mesh_instance() -> MeshInstance3D:
@@ -103,12 +116,9 @@ func _stage_mesh(mesh_data: WebMeshData, display: Dictionary) -> void:
 	var mesh_instance := MeshInstance3D.new()
 	mesh_instance.mesh = mesh
 
-	var shader_name: String = str(display.get("shader", "glass"))
-	var mat := _resolve_mesh_material(shader_name)
-	if mat != null:
-		mesh_instance.set_surface_override_material(0, mat)
-
 	add_child(mesh_instance)
+	_mesh_display = display.duplicate()
+	_apply_mesh_material(mesh_instance)
 
 	if mesh != null:
 		var aabb := mesh.get_aabb()
@@ -231,14 +241,29 @@ static func eye_offset_in_view_space(head: Transform3D, eye: Transform3D) -> Vec
 	return head.affine_inverse() * eye.origin
 
 
+## Puts the material `_mesh_display` asks for on `mesh_instance`: the tunable surface material
+## (updated in place when it is already there) or one of the fixed-look legacy shaders.
+func _apply_mesh_material(mesh_instance: MeshInstance3D) -> void:
+	var shader := MeshSurfaceMaterial.shader_name(_mesh_display)
+	var current: Material = mesh_instance.get_surface_override_material(0)
+	if shader == "surface":
+		if current is StandardMaterial3D:
+			MeshSurfaceMaterial.apply(current as StandardMaterial3D, _mesh_display)
+		else:
+			mesh_instance.set_surface_override_material(0, MeshSurfaceMaterial.build(_mesh_display))
+		return
+	if current != null and current.get_meta("mesh_shader", "") == shader:
+		return
+	var mat := _resolve_mesh_material(shader)
+	if mat != null:
+		mat.set_meta("mesh_shader", shader)
+		mesh_instance.set_surface_override_material(0, mat)
+
+
+## Loads a legacy mesh shader by name, preferring a tuned `.tres` material over the bare shader.
 func _resolve_mesh_material(shader_name: String) -> Material:
-	var name_clean := shader_name.to_lower().strip_edges()
-	if name_clean.is_empty():
-		name_clean = "glass"
-
-	var tres_path := "res://shaders/" + name_clean + ".tres"
-	var shader_path := "res://shaders/" + name_clean + ".gdshader"
-
+	var tres_path := "res://shaders/" + shader_name + ".tres"
+	var shader_path := "res://shaders/" + shader_name + ".gdshader"
 	if ResourceLoader.exists(tres_path):
 		var res := load(tres_path)
 		if res is Material:
@@ -249,11 +274,7 @@ func _resolve_mesh_material(shader_name: String) -> Material:
 			var sm := ShaderMaterial.new()
 			sm.shader = sh
 			return sm
-
-	if name_clean != "glass":
-		return _resolve_mesh_material("glass")
-
-	push_error("SpecimenStage: failed to load default mesh shader (glass)")
+	push_error("SpecimenStage: mesh shader '%s' failed to load" % [shader_name])
 	return null
 
 
