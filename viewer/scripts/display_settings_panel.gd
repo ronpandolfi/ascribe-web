@@ -335,6 +335,13 @@ func clear_save_status() -> void:
 func get_display() -> Dictionary:
 	if _specimen_type == "mesh":
 		return _mesh_section.get_display()
+	return get_viewport_settings()
+
+
+## The volume and viewport settings (quality, FFR, adaptive resolution, ...) whatever is staged.
+## Per-frame XR and viewport code reads these; get_display() reports only mesh keys while a mesh
+## is staged, which silently reset them to their defaults.
+func get_viewport_settings() -> Dictionary:
 	var steps: int = int(_max_steps_slider.value if _max_steps_slider else $VBox/Quality.value)
 	var step_sz: float = float(_step_size_slider.value if _step_size_slider else Quality.step_size_for(steps))
 	var lut_sub: int = int(_lut_substeps_slider.value if _lut_substeps_slider else (1 if is_vr else Quality.lut_substeps_for(steps)))

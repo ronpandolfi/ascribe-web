@@ -162,6 +162,10 @@ func _wire_panel_textures() -> void:
 			var own: StandardMaterial3D = (mat as StandardMaterial3D).duplicate()
 			own.albedo_texture = viewport.get_texture()
 			own.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			# Drawn ahead of a mesh's depth-only pass (render_priority -1), writing their own
+			# depth: otherwise that pass, sorted first, hid a panel behind a translucent mesh.
+			own.render_priority = -2
+			own.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_ALWAYS
 			quad.set_surface_override_material(0, own)
 
 
@@ -204,7 +208,9 @@ func _wire_display_panels() -> void:
 	var vr_panel: DisplaySettingsPanel = $XROrigin3D/PanelViewport/DisplaySettingsPanel
 
 	var on_display_changed := func(source: DisplaySettingsPanel, other: DisplaySettingsPanel, display: Dictionary) -> void:
-		_user_touched_quality = true
+		# Only volume quality counts: a mesh slider says nothing about raymarch steps.
+		if display.has("max_steps"):
+			_user_touched_quality = true
 		_current_display.merge(display, true)
 		other.set_display(display)
 		_current_xr_adaptive_steps = -1
@@ -259,10 +265,12 @@ func _update_headlight() -> void:
 ## A mesh's display with every look key filled in from the material's defaults. Bundled meshes
 ## carry only the keys that were set at bake time, and `_current_display` still holds the
 ## previous specimen's look, so without this a story page staging a mesh would inherit the last
-## specimen's opacity, colour, etc. Volumes pass through unchanged.
+## specimen's opacity, colour, etc. Volumes get the defaults for the look keys they share with
+## meshes, for the same reason in reverse.
 func _display_for_staging(data: RefCounted, display: Dictionary) -> Dictionary:
 	if not (data is WebMeshData):
-		return display
+		# The look keys a mesh shares with volumes, at the viewer's volume defaults.
+		return display.merged({"gamma": 1.0, "opacity": 1.0})
 	var filled := MeshSurfaceMaterial.resolved(display)
 	filled["shader"] = MeshSurfaceMaterial.shader_name(display)
 	return display.merged(filled, true)
@@ -568,7 +576,7 @@ func _on_session_started() -> void:
 	_smoothed_angular_speed = 0.0
 	_current_xr_adaptive_steps = -1
 	_apply_quality_tier()
-	var active_display: Dictionary = $CanvasLayer/DisplaySettingsPanel.get_display()
+	var active_display: Dictionary = $CanvasLayer/DisplaySettingsPanel.get_viewport_settings()
 	_apply_webxr_fixed_foveation(bool(active_display.get("ffr_enabled", true)), float(active_display.get("ffr_level", 1.0)))
 
 
@@ -800,7 +808,7 @@ func _update_adaptive_resolution(delta: float) -> void:
 	var u := clampf(dist_to_box / 1.5, 0.0, 1.0)
 	var t := pow(u, 0.75)
 
-	var active_display: Dictionary = $CanvasLayer/DisplaySettingsPanel.get_display()
+	var active_display: Dictionary = $CanvasLayer/DisplaySettingsPanel.get_viewport_settings()
 	var adaptive_xr: bool = bool(active_display.get("adaptive_steps", false))
 	var motion_adaptive: bool = bool(active_display.get("motion_adaptive_steps", true))
 	var adaptive_flat: bool = bool(active_display.get("adaptive_res_flat", true))

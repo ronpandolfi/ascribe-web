@@ -627,9 +627,11 @@ func test_staging_a_mesh_fills_in_its_own_defaults() -> void:
 	assert_float(d["opacity"]).is_equal_approx(1.0, 0.001)
 	assert_str(d["color"]).is_equal("#d4af37")
 	assert_bool(d["inner_surfaces"]).is_false()
-	# Volumes are passed through untouched.
+	# Volumes keep what they set and get the viewer's defaults for the rest, so a volume after a
+	# translucent mesh does not inherit the mesh's opacity.
 	var v: Dictionary = main.call("_display_for_staging", WebVolumetricData.new(), {"gamma": 1.2})
-	assert_that(v).is_equal({"gamma": 1.2})
+	assert_float(v["gamma"]).is_equal_approx(1.2, 0.001)
+	assert_float(v["opacity"]).is_equal_approx(1.0, 0.001)
 
 
 # Final review: the desktop panel was sized once per specimen, so picking Surface after a
@@ -645,3 +647,50 @@ func test_mesh_panel_resizes_when_the_shader_changes() -> void:
 	picker.item_selected.emit(0)
 	var vbox: Control = panel.get_node("VBox")
 	assert_float(panel.size.y).is_greater_equal(vbox.get_combined_minimum_size().y + 20.0)
+
+
+# Review #6: with a mesh staged the panel reports only mesh keys, so the per-frame XR/viewport
+# code read FFR, adaptive resolution etc. as defaults -- ignoring what the user had set.
+func test_viewport_settings_survive_a_mesh_being_staged() -> void:
+	var main := await _make_main()
+	var panel: DisplaySettingsPanel = main.get_node("CanvasLayer/DisplaySettingsPanel")
+	panel.set_display({"ffr_enabled": false, "adaptive_res_flat": false})
+	panel.set_specimen_type("mesh")
+	var settings: Dictionary = panel.get_viewport_settings()
+	assert_bool(settings["ffr_enabled"]).is_false()
+	assert_bool(settings["adaptive_res_flat"]).is_false()
+
+
+# Review #6: a mesh slider marked volume quality as hand-tuned, which changes how a later
+# volume's authored quality is capped in a headset.
+func test_mesh_sliders_do_not_count_as_touching_quality() -> void:
+	var main := await _make_main()
+	var panel: DisplaySettingsPanel = main.get_node("CanvasLayer/DisplaySettingsPanel")
+	main.set("_user_touched_quality", false)
+	panel.set_specimen_type("mesh")
+	(panel.get_node("VBox/MeshSection/Surface/Metallic") as HSlider).value = 0.7
+	assert_bool(main.get("_user_touched_quality")).is_false()
+
+
+# Review #6: a translucent mesh's depth-only pass (sorted ahead of other transparent items)
+# hid an XR panel behind it. The panels draw before it and write their own depth instead.
+func test_xr_panel_draws_before_mesh_depth_pass() -> void:
+	var main := await _make_main()
+	var mat: StandardMaterial3D = (main.get_node("XROrigin3D/PanelQuad") as MeshInstance3D).get_surface_override_material(0)
+	var depth_pass := MeshSurfaceMaterial.depth_pass_for(StandardMaterial3D.new())
+	assert_int(mat.render_priority).is_less(depth_pass.render_priority)
+	assert_int(mat.depth_draw_mode).is_equal(BaseMaterial3D.DEPTH_DRAW_ALWAYS)
+
+
+# Review #6: never checked in a headset -- the in-VR panel must fit the mesh controls,
+# swatch row included, inside its SubViewport.
+func test_vr_panel_fits_the_mesh_section() -> void:
+	var main := await _make_main()
+	var vp: SubViewport = main.get_node("XROrigin3D/PanelViewport")
+	var panel: DisplaySettingsPanel = vp.get_node("DisplaySettingsPanel")
+	panel.set_specimen_type("mesh")
+	await get_tree().process_frame
+	var vbox: Control = panel.get_node("VBox")
+	var need := vbox.get_combined_minimum_size()
+	assert_float(need.y + 20.0).is_less_equal(float(vp.size.y))
+	assert_float(need.x + 24.0).is_less_equal(float(vp.size.x))
