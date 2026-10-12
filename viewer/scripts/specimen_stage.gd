@@ -18,6 +18,9 @@ const MESH_DISPLAY_KEYS := ["shader", "color", "opacity", "roughness", "metallic
 ## only their nearest surface.
 const DEPTH_PASS_SHADERS := ["crystal"]
 
+## How long the material warm-up boxes are drawn before they are freed.
+const WARMUP_FRAMES := 3
+
 ## The staged mesh's display, accumulated across apply_display() calls, so a partial update
 ## (one slider) never resets the rest of the look.
 var _mesh_display: Dictionary = {}
@@ -132,6 +135,45 @@ func _stage_mesh(mesh_data: WebMeshData, display: Dictionary) -> void:
 			var scale := 1.0 / largest
 			mesh_instance.scale = Vector3(scale, scale, scale)
 			mesh_instance.position = -aabb.get_center() * scale
+	_warm_up_mesh_materials()
+
+
+## Draws every mesh material variant the panel can switch to -- inner surfaces and the fixed-look
+## shaders -- for a few frames on a tiny box at the specimen's centre. A variant is compiled the
+## first time something is drawn with it, which on the web is a visible stall; this moves those
+## compiles into loading instead of the first click. The boxes are 1 mm, and the inner-surfaces
+## one adds at near-zero alpha, so nothing visible is drawn.
+func _warm_up_mesh_materials() -> void:
+	var warmup := Node3D.new()
+	warmup.name = "MaterialWarmup"
+	var materials: Array[Material] = [
+		MeshSurfaceMaterial.build({"opacity": 0.001, "inner_surfaces": true})]
+	for shader in MeshSurfaceMaterial.SHADERS:
+		if shader != "surface":
+			var mat := _resolve_mesh_material(shader)
+			if mat != null:
+				if shader in DEPTH_PASS_SHADERS:
+					mat.next_pass = MeshSurfaceMaterial.depth_pass_for(mat)
+				materials.append(mat)
+	for mat in materials:
+		# One box each: a surface override is per instance, but sharing a mesh between them
+		# confuses headless teardown (the dummy renderer reports a null material).
+		var box := BoxMesh.new()
+		box.size = Vector3.ONE * 0.001
+		var probe := MeshInstance3D.new()
+		probe.mesh = box
+		probe.set_surface_override_material(0, mat)
+		probe.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		warmup.add_child(probe)
+	add_child(warmup)
+	_free_after_frames(warmup, WARMUP_FRAMES)
+
+
+func _free_after_frames(node: Node, frames: int) -> void:
+	for _i in frames:
+		await get_tree().process_frame
+	if is_instance_valid(node):
+		node.queue_free()
 
 
 ## Computes a BoxMesh size (in meters) for a volume whose physical extent is

@@ -330,3 +330,30 @@ func test_crystal_gets_a_depth_pass() -> void:
 	var mat: ShaderMaterial = _staged_mesh(stage).get_surface_override_material(0)
 	assert_that(mat.next_pass is ShaderMaterial).is_true()
 	assert_int(mat.next_pass.render_priority).is_less(mat.render_priority)
+
+
+# Ron saw a stall the first time inner surfaces was switched on: a material variant is compiled
+# the first time something is drawn with it. Staging a mesh draws every variant once, tiny and
+# invisible, so those compiles land during loading instead of on a click.
+func test_staging_a_mesh_warms_every_material_variant() -> void:
+	var stage: SpecimenStage = auto_free(SpecimenStage.new())
+	add_child(stage)
+	stage.stage("m", _build_test_mesh_data(), {})
+
+	var warmup: Node3D = stage.get_node_or_null("MaterialWarmup")
+	assert_that(warmup).is_not_null()
+	var seen := {}
+	for child in warmup.get_children():
+		var mat: Material = (child as MeshInstance3D).get_surface_override_material(0)
+		if mat is StandardMaterial3D and (mat as StandardMaterial3D).blend_mode == BaseMaterial3D.BLEND_MODE_ADD:
+			seen["inner"] = true
+		elif mat is ShaderMaterial:
+			seen[(mat as ShaderMaterial).shader.resource_path.get_file().get_basename()] = true
+	for want in ["inner", "pearl", "crystal", "holographic"]:
+		assert_bool(seen.has(want)).override_failure_message("no warm-up for " + want).is_true()
+	# The staged mesh is still the one the rest of the stage sees.
+	assert_that(_staged_mesh(stage).get_surface_override_material(0) is StandardMaterial3D).is_true()
+
+	for _i in SpecimenStage.WARMUP_FRAMES + 1:
+		await get_tree().process_frame
+	assert_that(stage.get_node_or_null("MaterialWarmup")).is_null()
