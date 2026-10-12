@@ -11,11 +11,6 @@ const SHADERS := ["surface", "pearl", "crystal", "holographic"]
 const DEFAULT_COLOR := "#d4af37"
 const DEPTH_ONLY := preload("res://shaders/depth_only.gdshader")
 
-## One material per render configuration, never drawn, held only so their shader variants stay
-## alive: Godot frees a StandardMaterial3D variant once nothing uses it, and recompiling one on
-## the web is a visible stall. With these pinned, toggling inner surfaces reuses the variant.
-static var _variant_pins: Array[Material] = []
-
 
 ## The shader `display` asks for, normalised. Retired or unknown names (glass, brick, ...) fall
 ## back to `surface` so that an old bundle renders visibly instead of not at all.
@@ -50,22 +45,41 @@ static func resolved(display: Dictionary) -> Dictionary:
 
 ## A new material configured from `display`.
 static func build(display: Dictionary) -> StandardMaterial3D:
-	_pin_variants()
+	return build_mode(display, wants_inner(display))
+
+
+## A new material configured for one mode -- inner surfaces or nearest surface -- whatever
+## `display` says, with its look from `display`. SpecimenStage keeps one of each per mesh and
+## swaps between them, because on the web reconfiguring a material costs a long frame every
+## time (measured: 60-75 ms per toggle), while swapping between materials already drawn is free.
+static func build_mode(display: Dictionary, inner: bool) -> StandardMaterial3D:
 	var mat := _new_surface()
-	apply(mat, display)
+	_configure(mat, inner)
+	apply_look(mat, display)
 	return mat
 
 
-## Updates `mat` in place from `display`. Sliders only ever change uniforms here: the render
-## configuration (transparency, culling, depth, extra pass) depends on inner surfaces alone,
-## because on the web every configuration change recompiles the shader -- which is the stall
-## opacity used to cause when it crossed 1.
-static func apply(mat: StandardMaterial3D, display: Dictionary) -> void:
+## Whether `display` shows inner surfaces. Only while there is something to see through: at full
+## opacity, blending without depth writes would draw far surfaces over near ones.
+static func wants_inner(display: Dictionary) -> bool:
 	var s := resolved(display)
-	_set_look(mat, s)
-	# Inner surfaces only means something while there is something to see through; at full
-	# opacity, blending without depth writes would draw far surfaces over near ones.
-	var inner: bool = s["inner_surfaces"] and s["opacity"] < 1.0
+	return s["inner_surfaces"] and s["opacity"] < 1.0
+
+
+## Updates only the look (colour, alpha, roughness, metallic, rim): plain uniforms, so slider
+## drags cost nothing.
+static func apply_look(mat: StandardMaterial3D, display: Dictionary) -> void:
+	_set_look(mat, resolved(display))
+
+
+## Updates `mat` in place from `display`, reconfiguring it if the mode changed. Prefer swapping
+## between build_mode() materials where a mode can change often (see build_mode).
+static func apply(mat: StandardMaterial3D, display: Dictionary) -> void:
+	apply_look(mat, display)
+	_configure(mat, wants_inner(display))
+
+
+static func _configure(mat: StandardMaterial3D, inner: bool) -> void:
 	if inner:
 		# Every layer, additively. Triangles are drawn in index order, not depth order, and
 		# "over" blending depends on order -- overlapping layers showed as speckled triangles.
@@ -125,12 +139,3 @@ static func _set_config(mat: StandardMaterial3D, transparency: BaseMaterial3D.Tr
 		mat.depth_draw_mode = depth
 	if mat.blend_mode != blend:
 		mat.blend_mode = blend
-
-
-static func _pin_variants() -> void:
-	if not _variant_pins.is_empty():
-		return
-	for inner in [false, true]:
-		var pin := _new_surface()
-		apply(pin, {"opacity": 0.5, "inner_surfaces": inner})
-		_variant_pins.append(pin)

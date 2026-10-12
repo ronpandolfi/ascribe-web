@@ -25,6 +25,14 @@ const WARMUP_FRAMES := 3
 ## (one slider) never resets the rest of the look.
 var _mesh_display: Dictionary = {}
 
+## The staged mesh's materials, each configured once and kept: the surface material in its two
+## modes, and the fixed-look shaders by name (filled as they are first needed). A switch only
+## changes which one the mesh shows -- on the web, reconfiguring a material costs a long frame
+## every time, while showing one that has already been drawn is free.
+var _surface_nearest: StandardMaterial3D
+var _surface_inner: StandardMaterial3D
+var _legacy_materials: Dictionary = {}
+
 
 ## Stages `data` (a WebVolumetricData or WebMeshData) under `id`, applying `display` settings.
 ## Removes any previously staged specimen first.
@@ -47,6 +55,9 @@ func clear() -> void:
 		child.queue_free()
 	current_id = ""
 	_mesh_display = {}
+	_surface_nearest = null
+	_surface_inner = null
+	_legacy_materials = {}
 
 
 ## Applies display settings to the currently staged specimen.
@@ -126,6 +137,8 @@ func _stage_mesh(mesh_data: WebMeshData, display: Dictionary) -> void:
 
 	add_child(mesh_instance)
 	_mesh_display = display.duplicate()
+	_surface_nearest = MeshSurfaceMaterial.build_mode(_mesh_display, false)
+	_surface_inner = MeshSurfaceMaterial.build_mode(_mesh_display, true)
 	_apply_mesh_material(mesh_instance)
 
 	if mesh != null:
@@ -138,22 +151,18 @@ func _stage_mesh(mesh_data: WebMeshData, display: Dictionary) -> void:
 	_warm_up_mesh_materials()
 
 
-## Draws every mesh material variant the panel can switch to -- inner surfaces and the fixed-look
-## shaders -- for a few frames on a tiny box at the specimen's centre. A variant is compiled the
-## first time something is drawn with it, which on the web is a visible stall; this moves those
-## compiles into loading instead of the first click. The boxes are 1 mm, and the inner-surfaces
-## one adds at near-zero alpha, so nothing visible is drawn.
+## Draws every material the panel can switch the staged mesh to -- the inner-surfaces one and the
+## fixed-look shaders -- for a few frames on a 1 mm box at the specimen's centre. The first draw
+## of each material instance is a long frame on the web, so these are the very instances a later
+## switch shows, not copies: the cost lands during loading instead of on a click.
 func _warm_up_mesh_materials() -> void:
 	var warmup := Node3D.new()
 	warmup.name = "MaterialWarmup"
-	var materials: Array[Material] = [
-		MeshSurfaceMaterial.build({"opacity": 0.001, "inner_surfaces": true})]
+	var materials: Array[Material] = [_surface_inner]
 	for shader in MeshSurfaceMaterial.SHADERS:
 		if shader != "surface":
-			var mat := _resolve_mesh_material(shader)
+			var mat := _legacy_material(shader)
 			if mat != null:
-				if shader in DEPTH_PASS_SHADERS:
-					mat.next_pass = MeshSurfaceMaterial.depth_pass_for(mat)
 				materials.append(mat)
 	for mat in materials:
 		# One box each: a surface override is per instance, but sharing a mesh between them
@@ -289,25 +298,29 @@ static func eye_offset_in_view_space(head: Transform3D, eye: Transform3D) -> Vec
 	return head.affine_inverse() * eye.origin
 
 
-## Puts the material `_mesh_display` asks for on `mesh_instance`: the tunable surface material
-## (updated in place when it is already there) or one of the fixed-look legacy shaders.
+## Shows the material `_mesh_display` asks for on `mesh_instance`. The look goes to both surface
+## materials, so a later mode switch shows the current colour, opacity, etc.
 func _apply_mesh_material(mesh_instance: MeshInstance3D) -> void:
 	var shader := MeshSurfaceMaterial.shader_name(_mesh_display)
-	var current: Material = mesh_instance.get_surface_override_material(0)
+	var want: Material
 	if shader == "surface":
-		if current is StandardMaterial3D:
-			MeshSurfaceMaterial.apply(current as StandardMaterial3D, _mesh_display)
-		else:
-			mesh_instance.set_surface_override_material(0, MeshSurfaceMaterial.build(_mesh_display))
-		return
-	if current != null and current.get_meta("mesh_shader", "") == shader:
-		return
-	var mat := _resolve_mesh_material(shader)
-	if mat != null:
-		if shader in DEPTH_PASS_SHADERS:
+		MeshSurfaceMaterial.apply_look(_surface_nearest, _mesh_display)
+		MeshSurfaceMaterial.apply_look(_surface_inner, _mesh_display)
+		want = _surface_inner if MeshSurfaceMaterial.wants_inner(_mesh_display) else _surface_nearest
+	else:
+		want = _legacy_material(shader)
+	if want != null and mesh_instance.get_surface_override_material(0) != want:
+		mesh_instance.set_surface_override_material(0, want)
+
+
+## The staged mesh's material for a fixed-look shader, loaded once and kept.
+func _legacy_material(shader: String) -> Material:
+	if not _legacy_materials.has(shader):
+		var mat := _resolve_mesh_material(shader)
+		if mat != null and shader in DEPTH_PASS_SHADERS:
 			mat.next_pass = MeshSurfaceMaterial.depth_pass_for(mat)
-		mat.set_meta("mesh_shader", shader)
-		mesh_instance.set_surface_override_material(0, mat)
+		_legacy_materials[shader] = mat
+	return _legacy_materials[shader]
 
 
 ## Loads a legacy mesh shader by name, preferring a tuned `.tres` material over the bare shader.

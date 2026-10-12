@@ -332,27 +332,66 @@ func test_crystal_gets_a_depth_pass() -> void:
 	assert_int(mat.next_pass.render_priority).is_less(mat.render_priority)
 
 
-# Ron saw a stall the first time inner surfaces was switched on: a material variant is compiled
-# the first time something is drawn with it. Staging a mesh draws every variant once, tiny and
-# invisible, so those compiles land during loading instead of on a click.
-func test_staging_a_mesh_warms_every_material_variant() -> void:
+# Ron saw a ~1 s stall on every inner-surfaces toggle. Measured on the web build: reconfiguring
+# a material in place costs a long frame every time, while swapping between materials that have
+# already been drawn is free. So each mode has its own persistent material, configured once, and
+# a toggle only swaps which one the mesh shows.
+func test_inner_toggle_swaps_two_persistent_materials() -> void:
+	var stage: SpecimenStage = auto_free(SpecimenStage.new())
+	add_child(stage)
+	stage.stage("m", _build_test_mesh_data(), {"opacity": 0.4})
+	var mesh := _staged_mesh(stage)
+	var nearest: StandardMaterial3D = mesh.get_surface_override_material(0)
+
+	stage.apply_display({"inner_surfaces": true})
+	var inner: StandardMaterial3D = mesh.get_surface_override_material(0)
+	assert_that(inner).is_not_same(nearest)
+	assert_int(inner.blend_mode).is_equal(BaseMaterial3D.BLEND_MODE_ADD)
+	assert_int(nearest.blend_mode).is_equal(BaseMaterial3D.BLEND_MODE_MIX)
+
+	stage.apply_display({"inner_surfaces": false, "color": "#2a9d8f"})
+	assert_that(mesh.get_surface_override_material(0)).is_same(nearest)
+	assert_str("#" + nearest.albedo_color.to_html(false)).is_equal("#2a9d8f")
+	stage.apply_display({"inner_surfaces": true})
+	assert_that(mesh.get_surface_override_material(0)).is_same(inner)
+	# Look changes made while one mode was showing carry over to the other.
+	assert_str("#" + inner.albedo_color.to_html(false)).is_equal("#2a9d8f")
+	# Inner at full opacity shows the nearest-surface material, unchanged.
+	stage.apply_display({"opacity": 1.0})
+	assert_that(mesh.get_surface_override_material(0)).is_same(nearest)
+	assert_int(inner.blend_mode).is_equal(BaseMaterial3D.BLEND_MODE_ADD)
+
+
+func test_legacy_shader_materials_are_reused_across_switches() -> void:
+	var stage: SpecimenStage = auto_free(SpecimenStage.new())
+	add_child(stage)
+	stage.stage("m", _build_test_mesh_data(), {"shader": "crystal"})
+	var mesh := _staged_mesh(stage)
+	var crystal: Material = mesh.get_surface_override_material(0)
+	stage.apply_display({"shader": "surface"})
+	stage.apply_display({"shader": "crystal"})
+	assert_that(mesh.get_surface_override_material(0)).is_same(crystal)
+
+
+# The first draw of each material instance is the costly one, so the warm-up must draw the very
+# instances a later switch will show -- not fresh copies of them.
+func test_staging_a_mesh_warms_the_instances_it_will_switch_to() -> void:
 	var stage: SpecimenStage = auto_free(SpecimenStage.new())
 	add_child(stage)
 	stage.stage("m", _build_test_mesh_data(), {})
-
 	var warmup: Node3D = stage.get_node_or_null("MaterialWarmup")
 	assert_that(warmup).is_not_null()
-	var seen := {}
+	var warmed: Array = []
 	for child in warmup.get_children():
-		var mat: Material = (child as MeshInstance3D).get_surface_override_material(0)
-		if mat is StandardMaterial3D and (mat as StandardMaterial3D).blend_mode == BaseMaterial3D.BLEND_MODE_ADD:
-			seen["inner"] = true
-		elif mat is ShaderMaterial:
-			seen[(mat as ShaderMaterial).shader.resource_path.get_file().get_basename()] = true
-	for want in ["inner", "pearl", "crystal", "holographic"]:
-		assert_bool(seen.has(want)).override_failure_message("no warm-up for " + want).is_true()
-	# The staged mesh is still the one the rest of the stage sees.
-	assert_that(_staged_mesh(stage).get_surface_override_material(0) is StandardMaterial3D).is_true()
+		warmed.append((child as MeshInstance3D).get_surface_override_material(0))
+	assert_int(warmed.size()).is_equal(4)  # inner + pearl, crystal, holographic
+
+	var mesh := _staged_mesh(stage)
+	stage.apply_display({"opacity": 0.4, "inner_surfaces": true})
+	assert_bool(warmed.has(mesh.get_surface_override_material(0))).is_true()
+	for shader in ["pearl", "crystal", "holographic"]:
+		stage.apply_display({"shader": shader})
+		assert_bool(warmed.has(mesh.get_surface_override_material(0))) 			.override_failure_message("not warmed: " + shader).is_true()
 
 	for _i in SpecimenStage.WARMUP_FRAMES + 1:
 		await get_tree().process_frame
