@@ -11,6 +11,11 @@ const SHADERS := ["surface", "pearl", "crystal", "hologram"]
 const DEFAULT_COLOR := "#d4af37"
 const DEPTH_ONLY := preload("res://shaders/depth_only.gdshader")
 
+## One material per render configuration, never drawn, held only so their shader variants stay
+## alive: Godot frees a StandardMaterial3D variant once nothing uses it, and recompiling one on
+## the web is a visible stall. With these pinned, toggling inner surfaces reuses the variant.
+static var _variant_pins: Array[Material] = []
+
 
 ## The shader `display` asks for, normalised. Retired or unknown names (glass, brick, ...) fall
 ## back to `surface` so that an old bundle renders visibly instead of not at all.
@@ -45,48 +50,84 @@ static func resolved(display: Dictionary) -> Dictionary:
 
 ## A new material configured from `display`.
 static func build(display: Dictionary) -> StandardMaterial3D:
-	var mat := StandardMaterial3D.new()
-	# Both faces, always: open meshes (CAD shells, cut isosurfaces) show their inside instead of
-	# holes, and Godot flips the normal for back faces so they light correctly.
-	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	mat.rim_tint = 0.5
+	_pin_variants()
+	var mat := _new_surface()
 	apply(mat, display)
 	return mat
 
 
-## Updates `mat` in place from `display`.
+## Updates `mat` in place from `display`. Sliders only ever change uniforms here: the render
+## configuration (transparency, culling, depth, extra pass) depends on inner surfaces alone,
+## because on the web every configuration change recompiles the shader -- which is the stall
+## opacity used to cause when it crossed 1.
 static func apply(mat: StandardMaterial3D, display: Dictionary) -> void:
 	var s := resolved(display)
+	_set_look(mat, s)
+	# Inner surfaces only means something while there is something to see through; at full
+	# opacity, blending without depth writes would draw far surfaces over near ones.
+	var inner: bool = s["inner_surfaces"] and s["opacity"] < 1.0
+	if inner:
+		# Back faces first (the next pass, sorted ahead by its lower render_priority), then front
+		# faces. Blending both in one unsorted draw composited half of each quad before the far
+		# wall and half after, which showed as alternating triangles.
+		_set_config(mat, BaseMaterial3D.TRANSPARENCY_ALPHA, BaseMaterial3D.CULL_BACK,
+			BaseMaterial3D.DEPTH_DRAW_DISABLED)
+		var back := mat.next_pass as StandardMaterial3D
+		if back == null:
+			back = _new_surface()
+			_set_config(back, BaseMaterial3D.TRANSPARENCY_ALPHA, BaseMaterial3D.CULL_FRONT,
+				BaseMaterial3D.DEPTH_DRAW_DISABLED)
+			back.render_priority = mat.render_priority - 1
+			mat.next_pass = back
+		_set_look(back, s)
+	else:
+		# Nearest surface: one blended shell. Both faces, so open meshes (CAD shells, cut
+		# isosurfaces) show their inside instead of holes; Godot flips back-face normals so they
+		# light correctly. The Compatibility renderer ignores ALPHA_DEPTH_PRE_PASS, so a
+		# depth-only pass sorted ahead of this one makes only the nearest surface pass the depth
+		# test. Used at full opacity too, so opacity never changes the configuration.
+		_set_config(mat, BaseMaterial3D.TRANSPARENCY_ALPHA_DEPTH_PRE_PASS,
+			BaseMaterial3D.CULL_DISABLED, BaseMaterial3D.DEPTH_DRAW_OPAQUE_ONLY)
+		if not (mat.next_pass is ShaderMaterial):
+			var depth_pass := ShaderMaterial.new()
+			depth_pass.shader = DEPTH_ONLY
+			depth_pass.render_priority = mat.render_priority - 1
+			mat.next_pass = depth_pass
+
+
+static func _new_surface() -> StandardMaterial3D:
+	var mat := StandardMaterial3D.new()
+	# Always on: rim 0 reads as off, and toggling the flag itself would recompile the shader.
+	mat.rim_enabled = true
+	mat.rim_tint = 0.5
+	return mat
+
+
+## The uniforms: colour, alpha, roughness, metallic, rim.
+static func _set_look(mat: StandardMaterial3D, s: Dictionary) -> void:
 	var color := Color.from_string(s["color"], Color.from_string(DEFAULT_COLOR, Color.WHITE))
 	color.a = s["opacity"]
 	mat.albedo_color = color
 	mat.roughness = s["roughness"]
 	mat.metallic = s["metallic"]
-	mat.rim_enabled = s["rim"] > 0.0
 	mat.rim = s["rim"]
 
-	var transparency := BaseMaterial3D.TRANSPARENCY_DISABLED
-	if s["opacity"] < 1.0:
-		transparency = (BaseMaterial3D.TRANSPARENCY_ALPHA if s["inner_surfaces"]
-			else BaseMaterial3D.TRANSPARENCY_ALPHA_DEPTH_PRE_PASS)
-	var depth := (BaseMaterial3D.DEPTH_DRAW_DISABLED
-		if transparency == BaseMaterial3D.TRANSPARENCY_ALPHA
-		else BaseMaterial3D.DEPTH_DRAW_OPAQUE_ONLY)
-	# Each assignment recompiles the shader -- a visible hitch on web -- so only touch these when
-	# the regime actually changes, never on every slider tick.
+
+## Assigns only what differs: each of these is part of the shader variant.
+static func _set_config(mat: StandardMaterial3D, transparency: BaseMaterial3D.Transparency,
+		cull: BaseMaterial3D.CullMode, depth: BaseMaterial3D.DepthDrawMode) -> void:
 	if mat.transparency != transparency:
 		mat.transparency = transparency
+	if mat.cull_mode != cull:
+		mat.cull_mode = cull
 	if mat.depth_draw_mode != depth:
 		mat.depth_draw_mode = depth
 
-	# Nearest-surface translucency needs a depth pre-pass, which the Compatibility renderer does
-	# not do for TRANSPARENCY_ALPHA_DEPTH_PRE_PASS. A depth-only pass ordered ahead of this one
-	# (lower render_priority sorts first among transparent items) stands in for it.
-	var wants_depth_pass := transparency == BaseMaterial3D.TRANSPARENCY_ALPHA_DEPTH_PRE_PASS
-	if wants_depth_pass and mat.next_pass == null:
-		var depth_pass := ShaderMaterial.new()
-		depth_pass.shader = DEPTH_ONLY
-		depth_pass.render_priority = mat.render_priority - 1
-		mat.next_pass = depth_pass
-	elif not wants_depth_pass and mat.next_pass != null:
-		mat.next_pass = null
+
+static func _pin_variants() -> void:
+	if not _variant_pins.is_empty():
+		return
+	for inner in [false, true]:
+		var pin := _new_surface()
+		apply(pin, {"opacity": 0.5, "inner_surfaces": inner})
+		_variant_pins.append(pin)
