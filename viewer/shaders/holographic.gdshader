@@ -1,11 +1,20 @@
 shader_type spatial;
-render_mode blend_mix, depth_draw_opaque, diffuse_burley, specular_schlick_ggx;
-
-// Restored for meshes without UVs: the original normal-map lines (a texture sampled at UV) are
-// dropped, since mesh envelopes carry no UVs. The colour comes from light(), so it needs a light
-// in the scene -- the viewer's headlight.
+// Self-lit: the look needs a sky to mirror and a light at a fixed angle, which the viewer's
+// black, headlit scene does not have (in ascribe-xr it came from the scene's procedural sky and
+// a fixed DirectionalLight3D). Both are computed here instead, in world space, so the rainbow
+// band sweeps across the surface as the viewer orbits or turns the specimen.
+render_mode unshaded, blend_mix, depth_draw_opaque, cull_back;
 
 uniform float color_compression = 6.0;
+// Direction *toward* the key light, in world space: ascribe-xr's light, coming from above-left.
+uniform vec3 key_light_dir = vec3(-0.5, 0.75, -0.433);
+uniform float rainbow_strength : hint_range(0.0, 2.0) = 1.0;
+uniform float mirror_strength : hint_range(0.0, 1.0) = 0.5;
+uniform float glow : hint_range(0.0, 1.0) = 0.125;
+// Godot's ProceduralSkyMaterial defaults, which ascribe-xr's sky uses.
+uniform vec3 sky_top : source_color = vec3(0.385, 0.454, 0.55);
+uniform vec3 sky_horizon : source_color = vec3(0.646, 0.656, 0.67);
+uniform vec3 ground_bottom : source_color = vec3(0.2, 0.169, 0.133);
 
 // Function to convert HSV to RGB
 // Not my creation, but slightly modified
@@ -35,32 +44,30 @@ float range_lerp(float value, float istart, float istop, float ostart, float ost
          return ostart + (ostop - ostart) * ((value - istart) / (istop - istart));
 }
 
-void fragment() {
-    // Set basic material properties
-    ALBEDO = vec3(0.5); // Gray seems to give a nice color mix
-    METALLIC = 1.0;
-    ROUGHNESS = 0.0;
-	EMISSION = vec3(0.125); // Used for that faint glow
+// A sky gradient seen along world-space direction `d`.
+vec3 sky(vec3 d) {
+	if (d.y >= 0.0) {
+		return mix(sky_horizon, sky_top, smoothstep(0.0, 0.6, d.y));
+	}
+	return mix(sky_horizon, ground_bottom, smoothstep(0.0, 0.3, -d.y));
 }
 
-void light() {
-    vec3 normal_dir = normalize(NORMAL); // Direction of surface normal
-    vec3 light_dir = normalize(LIGHT); // Direction of light
-	vec3 view_dir = normalize(VIEW); // Direction of camera
+void fragment() {
+	vec3 n = normalize((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
+	vec3 v = normalize((INV_VIEW_MATRIX * vec4(VIEW, 0.0)).xyz);  // toward the camera
+	vec3 l = normalize(key_light_dir);
 
-	vec3 reflection = reflect(light_dir, view_dir); // Get reflected light
+	// The mirror: a grey metal (albedo 0.5) reflecting the sky.
+	vec3 mirror = 0.5 * sky(reflect(-v, n)) * mirror_strength;
 
-    // Calculate the angle between the light direction and the normal
-    float angle = dot(reflection, normal_dir);
-    vec3 color = hsv2rgb((vec3(angle, 1.0, 1.0))); // Use hsv to rgb to turn angle into a color
-
-	// Bound checking
+	// The original light() term, now from the fixed key light.
+	vec3 reflection = reflect(l, v);
+	float angle = dot(reflection, n);
+	vec3 color = hsv2rgb(vec3(angle, 1.0, 1.0));
 	if (angle > 0.6) {
-		angle = range_lerp(angle, 0.6, 0.65, 1.0, 0.0);
-		angle = clamp(angle, 0.0, 1.0);
+		angle = clamp(range_lerp(angle, 0.6, 0.65, 1.0, 0.0), 0.0, 1.0);
 	}
+	vec3 rainbow = (color * max(angle, 0.0) + color * color * 0.25) * rainbow_strength;
 
-	// Apply that light!
-    SPECULAR_LIGHT += color * LIGHT_COLOR * ATTENUATION * angle;
-	SPECULAR_LIGHT += color * color;
+	ALBEDO = mirror + rainbow + vec3(glow);
 }

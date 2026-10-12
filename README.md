@@ -94,8 +94,8 @@ their inside rather than holes), opaque gold. Its look is set in the bundle and 
   x-ray look, brighter where layers stack), so internal structure shows through. Additive
   blending does not depend on draw order, so overlapping layers never break up into triangles.
 - `--shader pearl|crystal|holographic` picks a fixed look instead (opaque iridescent; translucent
-  violet showing its nearest surface; a mirror with a rainbow highlight band that follows the
-  light); the surface controls are hidden for those. Older bundles naming a removed shader
+  violet showing its nearest surface; a self-lit mirror of a sky gradient with a rainbow band
+  from a fixed key light, which sweeps across the surface as you orbit or turn the specimen); the surface controls are hidden for those. Older bundles naming a removed shader
   (`glass`, `jello`, `edges`, `brick`, `hologram`, `water`) render with `surface`.
 - `--flip-normals` reverses the triangle winding (stored as `display.flip_normals`). Correctly
   wound STLs (counter-clockwise seen from outside, which is the STL convention) render correctly
