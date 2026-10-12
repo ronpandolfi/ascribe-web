@@ -28,6 +28,13 @@ SCHEMA = {
                                     {"type": "number"}, {"type": "string"}]}},
                             "shader": {"type": "string"},
                             "flip_normals": {"type": "boolean"},
+                            # Mesh `surface` material. `opacity` is shared with volumes and
+                            # already declared above.
+                            "color": {"type": "string", "pattern": r"^#[0-9a-fA-F]{6}$"},
+                            "roughness": {"type": "number"},
+                            "metallic": {"type": "number"},
+                            "rim": {"type": "number"},
+                            "inner_surfaces": {"type": "boolean"},
                         },
                     },
                 },

@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import functools
 import json
+import re
 import shutil
 import sys
 import ssl
@@ -14,22 +15,15 @@ import numpy as np
 
 from .colormaps import gradient_stops, list_colormaps
 from .envelope import mesh_envelope, read_envelope, volume_envelope
-from .stl import load_stl
-
-MESH_SHADERS = [
-    "glass",
-    "crystal",
-    "brick",
-    "water",
-    "pearl",
-    "holographic",
-    "edges",
-    "jello",
-    "hologram",
-]
 from .manifest import DEFAULT_GRADIENT, make_manifest, validate_manifest
+from .stl import load_stl
 from .story import parse_story
 from .volume import convert_volume, load_volume
+
+# The tunable `surface` material plus the three legacy looks that render correctly on a mesh.
+# The others (glass, jello, edges, brick, holographic, water) were removed: they were invisible
+# on the viewer's black background or needed UVs that mesh envelopes do not carry.
+MESH_SHADERS = ["surface", "pearl", "crystal", "hologram"]
 
 
 def build(args) -> int:
@@ -79,7 +73,12 @@ def build(args) -> int:
             shutil.copy(src_img, dest_img)
 
     if spec_type == "mesh":
-        display = {"shader": args.shader or "glass"}
+        display = {"shader": args.shader}
+        # Only what was asked for: unset look parameters fall back to the viewer's defaults.
+        if args.color is not None:
+            display["color"] = args.color
+        if args.opacity is not None:
+            display["opacity"] = args.opacity
         if getattr(args, "flip_normals", False):
             display["flip_normals"] = True
     else:
@@ -113,6 +112,22 @@ def inspect(args) -> int:
         pre, payload = read_envelope((out / s["data"]).read_bytes())
         print(f"{s['id']}: {pre} payload={len(payload)} bytes")
     return 0
+
+
+def _hex_color(text: str) -> str:
+    if not re.fullmatch(r"#[0-9a-fA-F]{6}", text):
+        raise argparse.ArgumentTypeError(f"expected a #rrggbb colour, got {text!r}")
+    return text.lower()
+
+
+def _unit_float(text: str) -> float:
+    try:
+        value = float(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected a number, got {text!r}") from None
+    if not 0.0 <= value <= 1.0:
+        raise argparse.ArgumentTypeError(f"must be between 0 and 1, got {text!r}")
+    return value
 
 
 def _alpha_pair(text: str) -> tuple[float, float]:
@@ -302,9 +317,14 @@ def main(argv=None) -> int:
                         "invisible; at or above HI is solid")
     b.add_argument("--gamma", type=float, default=1.0,
                    help="gamma applied to the value before the transfer function is looked up")
-    b.add_argument("--shader", choices=MESH_SHADERS, default="glass",
-                   help="shader to statically set in the bundle for mesh rendering (default: glass; "
-                        "choices: glass, crystal, brick, water, pearl, holographic, edges, jello, hologram)")
+    b.add_argument("--shader", choices=MESH_SHADERS, default="surface",
+                   help="mesh material (default: surface, the tunable one; pearl, crystal and "
+                        "hologram are fixed looks)")
+    b.add_argument("--color", type=_hex_color, default=None, metavar="#RRGGBB",
+                   help="mesh base colour for the surface shader (default gold, #d4af37). "
+                        "Quote it in PowerShell, where an unquoted # starts a comment")
+    b.add_argument("--opacity", type=_unit_float, default=None, metavar="0-1",
+                   help="mesh opacity for the surface shader (default 1)")
     b.add_argument("--flip-normals", action="store_true",
                    help="invert mesh winding/normals")
     b.add_argument("--size-warn-mb", type=float, default=100)

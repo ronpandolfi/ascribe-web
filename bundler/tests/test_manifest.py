@@ -46,3 +46,21 @@ def test_view_rejects_a_malformed_pose():
     m["view"] = "not a pose"
     with pytest.raises(ValueError):
         validate_manifest(m)
+
+
+def _mesh(display):
+    return {"id": "m0", "type": "mesh", "data": "specimen_0.bin", "display": display}
+
+
+def test_validate_accepts_mesh_surface_display():
+    m = make_manifest("t", [_mesh({"shader": "surface", "color": "#d4af37", "opacity": 0.4,
+                                   "roughness": 0.5, "metallic": 0.0, "rim": 0.3,
+                                   "inner_surfaces": True})], [])
+    validate_manifest(m)
+
+
+def test_validate_rejects_malformed_mesh_color():
+    m = make_manifest("t", [_mesh({"color": "gold"})], [])
+    with pytest.raises(ValueError):
+        validate_manifest(m)
+

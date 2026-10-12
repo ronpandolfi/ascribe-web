@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from ascribe_bundle.cli import main
 
@@ -405,7 +406,10 @@ endsolid triangle
     assert rc == 0
 
     manifest = json.loads((out / "manifest.json").read_text())
-    assert manifest["specimens"][0]["display"]["shader"] == "glass"
+    display = manifest["specimens"][0]["display"]
+    assert display["shader"] == "surface"
+    # Unset look parameters stay out of the manifest, so the viewer's defaults live in one place.
+    assert "color" not in display and "opacity" not in display
 
 
 def test_gen_knot_bakes_welded_and_outward(tmp_path: Path):
@@ -432,3 +436,33 @@ def test_gen_knot_bakes_welded_and_outward(tmp_path: Path):
     # viewer renders the knot correctly without --flip-normals only if this holds.
     signed_volume = np.einsum("ij,ij->i", tri[:, 0], np.cross(tri[:, 1], tri[:, 2])).sum() / 6
     assert signed_volume > 0
+
+
+def _triangle_stl(tmp_path: Path) -> Path:
+    stl = tmp_path / "tri.stl"
+    stl.write_text("solid t\n facet normal 0 0 1\n  outer loop\n   vertex 0 0 0\n"
+                   "   vertex 1 0 0\n   vertex 0 1 0\n  endloop\n endfacet\nendsolid t\n",
+                   encoding="utf-8")
+    return stl
+
+
+def test_build_mesh_color_and_opacity(tmp_path: Path):
+    out = tmp_path / "out"
+    assert main(["build", str(_triangle_stl(tmp_path)), "--color", "#D4AF37",
+                 "--opacity", "0.4", "-o", str(out)]) == 0
+    display = json.loads((out / "manifest.json").read_text())["specimens"][0]["display"]
+    assert display["color"] == "#d4af37"
+    assert display["opacity"] == 0.4
+
+
+@pytest.mark.parametrize("flags", [
+    ["--color", "gold"],
+    ["--color", "#abc"],
+    ["--opacity", "1.5"],
+    ["--opacity", "-0.1"],
+    ["--shader", "glass"],
+])
+def test_build_mesh_rejects_bad_look_flags(tmp_path: Path, flags):
+    with pytest.raises(SystemExit):
+        main(["build", str(_triangle_stl(tmp_path)), *flags, "-o", str(tmp_path / "out")])
+
