@@ -76,6 +76,19 @@ jobs:
           ascribe-bundle build cube.npy --dtype u8 -o build/web/cube             --title "Rotated cube (synthetic control)"
           python demo/apply_display.py build/web/cube/manifest.json --preset dense-structure
 
+      - name: Bake the synthetic mesh bundles
+        run: |
+          set -euo pipefail
+          python demo/gen_knot.py knot.stl
+          ascribe-bundle build knot.stl --shader pearl --story demo/knot/story.md \
+            --title "Torus knot (synthetic mesh)" -o build/web/knot
+          # The same knot once per shader, so they can be compared side by side. Tiny (~0.6 MB
+          # each) and generated here, so they cost the repo nothing.
+          for shader in glass crystal brick water pearl holographic edges jello hologram; do
+            ascribe-bundle build knot.stl --shader "$shader" --story demo/knot/story.md \
+              --title "Torus knot ($shader)" -o "build/web/knot_$shader"
+          done
+
       - name: Stage bundles next to the viewer
         run: |
           set -euo pipefail

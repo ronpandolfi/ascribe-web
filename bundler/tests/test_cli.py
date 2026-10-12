@@ -406,3 +406,29 @@ endsolid triangle
 
     manifest = json.loads((out / "manifest.json").read_text())
     assert manifest["specimens"][0]["display"]["shader"] == "glass"
+
+
+def test_gen_knot_bakes_welded_and_outward(tmp_path: Path):
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "demo"))
+    from gen_knot import main as gen_knot
+
+    stl = tmp_path / "knot.stl"
+    assert gen_knot([str(stl), "--segments", "60", "--sides", "8"]) == 0
+    out = tmp_path / "knot"
+    assert main(["build", str(stl), "--shader", "pearl", "-o", str(out)]) == 0
+
+    manifest = json.loads((out / "manifest.json").read_text())
+    pre, payload = read_envelope((out / manifest["specimens"][0]["data"]).read_bytes())
+    # Seam vertices are emitted bit-identically, so de-duplication must weld every one of them;
+    # otherwise smooth normals would break along a visible seam.
+    assert pre["vertex_count"] == 60 * 8
+    assert pre["normal_count"] == pre["vertex_count"]
+
+    vc, ic = pre["vertex_count"], pre["index_count"]
+    verts = np.frombuffer(payload, "<f4", vc * 3).reshape(-1, 3)
+    tri = verts[np.frombuffer(payload, "<u4", ic, offset=vc * 12).reshape(-1, 3)]
+    # Outward (counter-clockwise from outside) winding encloses a positive signed volume. The
+    # viewer renders the knot correctly without --flip-normals only if this holds.
+    signed_volume = np.einsum("ij,ij->i", tri[:, 0], np.cross(tri[:, 1], tri[:, 2])).sum() / 6
+    assert signed_volume > 0

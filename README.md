@@ -69,6 +69,45 @@ ascribe-bundle build data.npy --story story.md --title "My Data" -o out/
 Run `ascribe-bundle inspect out/` to validate an existing bundle and print its manifest plus each
 specimen's decoded envelope header.
 
+#### Meshes (`.stl`)
+
+```powershell
+ascribe-bundle build part.stl --shader pearl --story story.md --title "My Part" -o out/
+```
+
+An `.stl` input (binary or ASCII, detected automatically) bakes a `mesh` specimen instead of a
+volume. The bundler welds duplicate vertices and computes smooth, area-weighted per-vertex
+normals, so a faceted CAD export comes out shaded smoothly. The viewer centres the mesh and
+scales its longest side to 1 m, so the units in the file do not matter.
+
+- `--shader NAME` picks the surface material, written into the manifest as `display.shader`.
+  It is a bake-time choice: the viewer's settings panel has no shader picker, and edit mode
+  keeps whatever shader the manifest already has. To change it, rebake or edit
+  `manifest.json`. Not every shader works on every mesh yet. Rendered on the demo knot:
+
+  | shader | on a mesh today |
+  |---|---|
+  | `pearl` | **works** -- opaque, iridescent; the best general-purpose choice |
+  | `crystal` | **works** -- translucent violet, shows self-overlap |
+  | `hologram` | **works** -- unshaded orange with scan lines |
+  | `glass` (the default) | invisible on the viewer's black background (transparent body, black edge colour) |
+  | `jello` | invisible: refracts the black background |
+  | `edges` | renders black |
+  | `brick`, `holographic`, `water` | flat grey / specks: they sample `UV`, and mesh bundles carry no UVs |
+
+  So pass `--shader pearl` (or `crystal`/`hologram`) rather than relying on the default.
+- `--flip-normals` reverses the triangle winding (stored as `display.flip_normals`). Correctly
+  wound STLs (counter-clockwise seen from outside, which is the STL convention) render correctly
+  *without* it. Reach for it only when a mesh looks dark, or you seem to be looking at its inside
+  through the near wall: that mesh was exported wound backwards.
+- `--story`, `--title`, `--size-warn-mb` and `-o` behave as for volumes. The volume-only flags
+  (`--dtype`, `--max-dim`, `--smooth`, `--window`, `--colormap*`, `--gamma`) are silently
+  ignored for meshes. There is no decimation, so a very dense STL bakes to a big bundle: the
+  payload is about 24 bytes per vertex plus 12 per triangle. Simplify it in a mesh tool first
+  if `--size-warn-mb` complains.
+
+The viewer's Gamma/Opacity/Quality sliders only affect volumes and do nothing on a mesh.
+
 ### 3. Preview locally
 
 On the desktop build you can point the viewer straight at a bundle without exporting for web:
@@ -175,6 +214,19 @@ binary.
 ALS volume with colour decoupled from the alpha ramp -- both for isolating how much of a banding
 artifact is colour-from-first-hit rather than opacity variation.
 
+## The synthetic mesh bundles
+
+`?bundle=knot` is a (2,3) torus knot swept into a tube, baked from an STL that
+`demo/gen_knot.py` writes at deploy time (its story is `demo/knot/story.md`). It is smooth,
+watertight and passes in front of itself, so seams, backwards normals and transparency sorting
+are all easy to see. `?bundle=knot_<shader>` is the same knot under each of the nine mesh
+shaders (`knot_crystal`, `knot_hologram`, ...), for comparing them. To bake it yourself:
+
+```powershell
+python demo/gen_knot.py knot.stl            # --p/--q pick the knot, --segments/--sides the density
+ascribe-bundle build knot.stl --shader pearl --story demo/knot/story.md -o build\web\knot
+```
+
 Transfer functions live in `demo/apply_display.py` as named presets; run it against a baked
 `manifest.json` after every rebake (`ascribe-bundle build` always writes the default gradient).
 
@@ -208,6 +260,8 @@ Everything under a specimen's `display` in `manifest.json`, all optional:
 | `max_steps`, `step_size` | ray sampling. An authored value wins over the automatic quality tier, except in a headset, where it is capped by the XR tier so a bundle cannot cost someone their framerate |
 | `lateral_jitter` | screen-plane dither, in march steps (default 4). Breaks up the coherent moire that neighbouring rays otherwise produce, at the cost of grain. Set 0 to disable |
 | `lut_substeps` | transfer-function sub-step budget (default 192). Lower it if a headset cannot hold framerate |
+| `shader` | *meshes only*: surface material, one of the `--shader` names (default `glass`; see [Meshes](#meshes-stl) for which work) |
+| `flip_normals` | *meshes only*: reverse triangle winding, for STLs exported wound backwards |
 
 Plus a top-level `view` (`"yaw,pitch,distance"`), the bundle's default framing.
 
@@ -252,6 +306,6 @@ Viewer (gdUnit4, headless):
 ## Roadmap / limitations
 
 - **Building directly from a running ascribe-link server is not yet implemented.** The bundler CLI
-  (`ascribe-bundle build`) only accepts local files -- a `.npy`/`.tif`/`.tiff` volume array, or a
-  pre-baked `.bin` envelope. There is no "point the CLI at a specimen ID on a live server" workflow
+  (`ascribe-bundle build`) only accepts local files -- a `.npy`/`.tif`/`.tiff` volume array, an
+  `.stl` mesh, or a pre-baked `.bin` envelope. There is no "point the CLI at a specimen ID on a live server" workflow
   yet; that would require an ascribe-link client and is left for a future iteration.
