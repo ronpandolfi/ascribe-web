@@ -43,7 +43,10 @@ func _build_mesh() -> ArrayMesh:
 		push_error("WebMeshData: index count (%d) is not a multiple of 3" % idx.size())
 		return null
 
-	if flip_normals:
+	# Bundles are wound counter-clockwise seen from outside (the STL convention, matching the
+	# bundler's normals); Godot treats clockwise as front-facing, so swap each triangle. A file
+	# exported wound backwards is already clockwise, which is what `flip_normals` says.
+	if not flip_normals:
 		for i in range(0, idx.size(), 3):
 			var tmp = idx[i + 1]
 			idx[i + 1] = idx[i + 2]

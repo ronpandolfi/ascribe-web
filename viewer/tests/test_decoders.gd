@@ -76,3 +76,22 @@ func test_mesh_set_from_bytes_builds_arraymesh() -> void:
 	var mesh := mesh_data.get_mesh()
 	assert_that(mesh).is_not_null()
 	assert_that(mesh.get_surface_count()).is_equal(1)
+
+
+# Bundles store triangles counter-clockwise seen from outside (the STL convention, and what the
+# bundler's normals assume), but Godot treats *clockwise* as front-facing. Unswapped, every mesh
+# rendered inside-out: culling shaders showed the far wall's inside, and lit/fresnel shaders
+# shaded with the wrong side's normals.
+func test_mesh_winding_is_converted_to_godot_clockwise() -> void:
+	var md := WebMeshData.new()
+	md.vertices = PackedFloat32Array([0, 0, 0, 1, 0, 0, 0, 1, 0])
+	md.indices = PackedInt32Array([0, 1, 2])
+	md.normals = PackedFloat32Array([0, 0, 1, 0, 0, 1, 0, 0, 1])
+	var idx: PackedInt32Array = md.get_mesh().surface_get_arrays(0)[Mesh.ARRAY_INDEX]
+	assert_array(Array(idx)).is_equal([0, 2, 1])
+
+	# flip_normals is for files exported wound backwards: it leaves their order alone.
+	md.flip_normals = true
+	md.invalidate_mesh()
+	idx = md.get_mesh().surface_get_arrays(0)[Mesh.ARRAY_INDEX]
+	assert_array(Array(idx)).is_equal([0, 1, 2])
