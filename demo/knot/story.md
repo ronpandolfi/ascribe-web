@@ -11,8 +11,12 @@ closed and watertight, so its normals have one right answer: wound backwards, li
 dark. And it passes in front of itself, so transparent shaders show their depth sorting.
 
 ---
-## Shaders
+## Tuning the look
 
-A mesh's look is chosen at bake time with `ascribe-bundle build --shader NAME`. The same knot
-is published once per shader for comparison: `?bundle=knot_crystal`, `?bundle=knot_hologram`,
-and so on.
+This knot uses the tunable **surface** material. Try the settings panel: colour, opacity,
+roughness, metallic and rim light all change live, and **Show inner surfaces** lets a
+translucent mesh show its own crossings.
+
+The same knot is also published with each fixed-look shader (`?bundle=knot_pearl`,
+`?bundle=knot_crystal`, `?bundle=knot_hologram`), and translucent with inner surfaces on as
+`?bundle=knot_inner`.

@@ -72,7 +72,7 @@ specimen's decoded envelope header.
 #### Meshes (`.stl`)
 
 ```powershell
-ascribe-bundle build part.stl --shader pearl --story story.md --title "My Part" -o out/
+ascribe-bundle build part.stl --color '#2a9d8f' --opacity 0.6 --story story.md --title "My Part" -o out/
 ```
 
 An `.stl` input (binary or ASCII, detected automatically) bakes a `mesh` specimen instead of a
@@ -80,22 +80,23 @@ volume. The bundler welds duplicate vertices and computes smooth, area-weighted 
 normals, so a faceted CAD export comes out shaded smoothly. The viewer centres the mesh and
 scales its longest side to 1 m, so the units in the file do not matter.
 
-- `--shader NAME` picks the surface material, written into the manifest as `display.shader`.
-  It is a bake-time choice: the viewer's settings panel has no shader picker, and edit mode
-  keeps whatever shader the manifest already has. To change it, rebake or edit
-  `manifest.json`. Not every shader works on every mesh yet. Rendered on the demo knot:
+By default a mesh gets the tunable **`surface`** material: lit, two-sided (open meshes show
+their inside rather than holes), opaque gold. Its look is set in the bundle and tuned live:
 
-  | shader | on a mesh today |
-  |---|---|
-  | `pearl` | **works** -- opaque, iridescent; the best general-purpose choice |
-  | `crystal` | **works** -- translucent violet, shows self-overlap |
-  | `hologram` | **works** -- unshaded orange with scan lines |
-  | `glass` (the default) | invisible on the viewer's black background (transparent body, black edge colour) |
-  | `jello` | invisible: refracts the black background |
-  | `edges` | renders black |
-  | `brick`, `holographic`, `water` | flat grey / specks: they sample `UV`, and mesh bundles carry no UVs |
-
-  So pass `--shader pearl` (or `crystal`/`hologram`) rather than relying on the default.
+- `--color '#rrggbb'` (default `#d4af37`, gold) and `--opacity 0-1` (default 1) set it at bake
+  time. Quote the colour in PowerShell, where an unquoted `#` starts a comment.
+- When a mesh is staged, the settings panel swaps the volume controls for mesh ones: a shader
+  picker, a colour picker (preset swatches in VR, where a picker is awkward with a controller),
+  Opacity, Roughness, Metallic and Rim light sliders, and **Show inner surfaces**. In edit mode,
+  **Save view + settings** writes them into `display`.
+- Translucency has two modes. By default only the nearest surface fades: the mesh fades as one
+  shell and never mis-sorts against itself. **Show inner surfaces** blends every layer instead,
+  so internal structure shows through, at the cost of some shimmer on dense meshes as the view
+  moves (triangles within one mesh are not sorted).
+- `--shader pearl|crystal|hologram` picks a fixed look instead (opaque iridescent, translucent
+  violet, unshaded orange with scan lines); the surface controls are hidden for those. Older
+  bundles naming a removed shader (`glass`, `jello`, `edges`, `brick`, `holographic`, `water`)
+  render with `surface`.
 - `--flip-normals` reverses the triangle winding (stored as `display.flip_normals`). Correctly
   wound STLs (counter-clockwise seen from outside, which is the STL convention) render correctly
   *without* it. Reach for it only when a mesh looks dark, or you seem to be looking at its inside
@@ -105,8 +106,6 @@ scales its longest side to 1 m, so the units in the file do not matter.
   ignored for meshes. There is no decimation, so a very dense STL bakes to a big bundle: the
   payload is about 24 bytes per vertex plus 12 per triangle. Simplify it in a mesh tool first
   if `--size-warn-mb` complains.
-
-The viewer's Gamma/Opacity/Quality sliders only affect volumes and do nothing on a mesh.
 
 ### 3. Preview locally
 
@@ -219,12 +218,14 @@ artifact is colour-from-first-hit rather than opacity variation.
 `?bundle=knot` is a (2,3) torus knot swept into a tube, baked from an STL that
 `demo/gen_knot.py` writes at deploy time (its story is `demo/knot/story.md`). It is smooth,
 watertight and passes in front of itself, so seams, backwards normals and transparency sorting
-are all easy to see. `?bundle=knot_<shader>` is the same knot under each of the nine mesh
-shaders (`knot_crystal`, `knot_hologram`, ...), for comparing them. To bake it yourself:
+are all easy to see. `?bundle=knot_<shader>` is the same knot under each of the four mesh
+shaders (`knot_surface`, `knot_crystal`, ...), for comparing them, and `?bundle=knot_inner` is
+it at opacity 0.4 with inner surfaces on, showing the crossings through the near tube. To bake
+it yourself:
 
 ```powershell
 python demo/gen_knot.py knot.stl            # --p/--q pick the knot, --segments/--sides the density
-ascribe-bundle build knot.stl --shader pearl --story demo/knot/story.md -o build\web\knot
+ascribe-bundle build knot.stl --story demo/knot/story.md -o build\web\knot
 ```
 
 Transfer functions live in `demo/apply_display.py` as named presets; run it against a baked
@@ -260,7 +261,11 @@ Everything under a specimen's `display` in `manifest.json`, all optional:
 | `max_steps`, `step_size` | ray sampling. An authored value wins over the automatic quality tier, except in a headset, where it is capped by the XR tier so a bundle cannot cost someone their framerate |
 | `lateral_jitter` | screen-plane dither, in march steps (default 4). Breaks up the coherent moire that neighbouring rays otherwise produce, at the cost of grain. Set 0 to disable |
 | `lut_substeps` | transfer-function sub-step budget (default 192). Lower it if a headset cannot hold framerate |
-| `shader` | *meshes only*: surface material, one of the `--shader` names (default `glass`; see [Meshes](#meshes-stl) for which work) |
+| `shader` | *meshes only*: `surface` (default, tunable), `pearl`, `crystal` or `hologram` |
+| `color` | *meshes only*: `#rrggbb` base colour (default `#d4af37`) |
+| `opacity` | for a mesh: surface alpha, 0-1 (default 1). For a volume it scales sample alpha (see above) |
+| `roughness`, `metallic`, `rim` | *meshes only*: 0-1 (defaults 0.5, 0, 0.3) |
+| `inner_surfaces` | *meshes only*: when translucent, blend every layer instead of only the nearest surface |
 | `flip_normals` | *meshes only*: reverse triangle winding, for STLs exported wound backwards |
 
 Plus a top-level `view` (`"yaw,pitch,distance"`), the bundle's default framing.

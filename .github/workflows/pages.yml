@@ -80,14 +80,18 @@ jobs:
         run: |
           set -euo pipefail
           python demo/gen_knot.py knot.stl
-          ascribe-bundle build knot.stl --shader pearl --story demo/knot/story.md \
+          ascribe-bundle build knot.stl --story demo/knot/story.md \
             --title "Torus knot (synthetic mesh)" -o build/web/knot
-          # The same knot once per shader, so they can be compared side by side. Tiny (~0.6 MB
-          # each) and generated here, so they cost the repo nothing.
-          for shader in glass crystal brick water pearl holographic edges jello hologram; do
+          # The same knot once per shader, plus a translucent one. Tiny (~0.6 MB each) and
+          # generated here, so they cost the repo nothing.
+          for shader in surface pearl crystal hologram; do
             ascribe-bundle build knot.stl --shader "$shader" --story demo/knot/story.md \
               --title "Torus knot ($shader)" -o "build/web/knot_$shader"
           done
+          # Translucent with inner surfaces, to show the crossings through the near tube.
+          ascribe-bundle build knot.stl --opacity 0.4 --story demo/knot/story.md \
+            --title "Torus knot (inner surfaces)" -o build/web/knot_inner
+          python -c "import json; p='build/web/knot_inner/manifest.json'; m=json.load(open(p)); m['specimens'][0]['display']['inner_surfaces']=True; json.dump(m, open(p, 'w'), indent=2)"
 
       - name: Stage bundles next to the viewer
         run: |
