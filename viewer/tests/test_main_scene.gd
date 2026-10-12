@@ -600,3 +600,20 @@ func test_panels_follow_the_staged_specimen_type() -> void:
 	main.call("_set_panels_specimen_type", WebMeshData.new())
 	assert_bool((desktop.get_node("VBox/MeshSection") as Control).visible).is_true()
 	assert_bool((vr.get_node("VBox/MeshSection") as Control).visible).is_true()
+
+
+# The scene had only ambient light, so the mesh surface material rendered flat: no shading,
+# highlight or rim. A headlight follows the viewer so the lit side always faces them.
+func test_headlight_follows_the_camera() -> void:
+	var main := await _make_main()
+	var light: DirectionalLight3D = main.get_node("Headlight")
+	var cam: OrbitCamera = main.get_node("Camera3D")
+	assert_bool(light.shadow_enabled).is_false()
+
+	for _i in 2:
+		await get_tree().process_frame
+		var cam_fwd := -cam.global_basis.z
+		var light_fwd := -light.global_basis.z
+		assert_float(cam_fwd.dot(light_fwd)).is_greater(0.7)
+		cam.yaw += PI
+		cam._sync_transform()

@@ -248,6 +248,14 @@ func _wire_story_panels() -> void:
 	$XROrigin3D/StoryViewport/StoryPanel.page_pinned.connect(on_page_pinned)
 
 
+## Keeps the key light just above and to the left of wherever the viewer is looking from, so a
+## lit mesh never turns its unlit side to the camera however it is orbited or carried. Volumes
+## render unshaded and ignore it; it casts no shadows, so it costs a headset next to nothing.
+func _update_headlight() -> void:
+	var cam: Node3D = $XROrigin3D/XRCamera3D if get_viewport().use_xr else $Camera3D
+	$Headlight.global_basis = cam.global_basis * Basis.from_euler(Vector3(-0.35, -0.45, 0.0))
+
+
 ## Shows the mesh or volume controls on both panels, to match what was just staged.
 func _set_panels_specimen_type(data: RefCounted) -> void:
 	var type := "mesh" if data is WebMeshData else "volume"
@@ -306,6 +314,7 @@ func _apply_quality_tier() -> void:
 func _process(delta: float) -> void:
 	_refresh_save_status()
 	_update_adaptive_resolution(delta)
+	_update_headlight()
 	if not OS.has_feature("web"):
 		var fs := _is_fullscreen()
 		if fs != _was_fullscreen:
