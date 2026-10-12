@@ -587,3 +587,16 @@ func test_mesh_panel_stays_clear_of_the_story_panel() -> void:
 	# Tall enough for every mesh control: the VBox's minimum height fits inside the panel.
 	var vbox: Control = panel.get_node("VBox")
 	assert_float(panel.size.y).is_greater_equal(vbox.get_combined_minimum_size().y + 20.0)
+
+
+func test_panels_follow_the_staged_specimen_type() -> void:
+	var main := await _make_main()
+	var desktop: DisplaySettingsPanel = main.get_node("CanvasLayer/DisplaySettingsPanel")
+	var vr: DisplaySettingsPanel = main.get_node("XROrigin3D/PanelViewport/DisplaySettingsPanel")
+	# The fixture bundle is a volume.
+	assert_bool((desktop.get_node("VBox/MeshSection") as Control).visible).is_false()
+
+	# `main` is typed Node3D here, so call through call() rather than a static method lookup.
+	main.call("_set_panels_specimen_type", WebMeshData.new())
+	assert_bool((desktop.get_node("VBox/MeshSection") as Control).visible).is_true()
+	assert_bool((vr.get_node("VBox/MeshSection") as Control).visible).is_true()

@@ -237,6 +237,7 @@ func _wire_story_panels() -> void:
 			return
 		var spec_display := _display_for_specimen(specimen_id)
 		$SpecimenStage.stage(specimen_id, data, spec_display)
+		_set_panels_specimen_type(data)
 		_last_stage_pos = $SpecimenStage.global_position
 		_last_stage_rot = $SpecimenStage.global_basis.orthonormalized()
 		_current_display.merge(spec_display, true)
@@ -245,6 +246,13 @@ func _wire_story_panels() -> void:
 		$SpecimenStage.apply_display(_current_display)
 	$CanvasLayer/StoryPanel.page_pinned.connect(on_page_pinned)
 	$XROrigin3D/StoryViewport/StoryPanel.page_pinned.connect(on_page_pinned)
+
+
+## Shows the mesh or volume controls on both panels, to match what was just staged.
+func _set_panels_specimen_type(data: RefCounted) -> void:
+	var type := "mesh" if data is WebMeshData else "volume"
+	$CanvasLayer/DisplaySettingsPanel.set_specimen_type(type)
+	$XROrigin3D/PanelViewport/DisplaySettingsPanel.set_specimen_type(type)
 
 
 ## Looks up a specimen's `display` dict from the manifest, or `{}` if not found.
@@ -462,6 +470,7 @@ func _on_loaded(manifest: Dictionary, specimens: Dictionary) -> void:
 				"step_size", Quality.step_size_for(int(spec_display["max_steps"])))),
 		}
 	$SpecimenStage.stage(spec_id, data, spec_display)
+	_set_panels_specimen_type(data)
 	var stage_node: Node3D = $SpecimenStage
 	_last_stage_pos = stage_node.global_position
 	_last_stage_rot = stage_node.global_basis.orthonormalized()
