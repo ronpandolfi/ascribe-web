@@ -1,6 +1,6 @@
 # Tunable mesh surface material — design
 
-Date: 2026-10-12. Status: awaiting review.
+Date: 2026-10-12. Status: approved by Ron 2026-10-12 (default colour changed to gold).
 
 ## Goal
 
@@ -40,7 +40,7 @@ A mesh specimen's `display` gains these keys, all optional:
 | key | type | default | meaning |
 |---|---|---|---|
 | `shader` | string | `"surface"` | `surface`, `pearl`, `crystal` or `hologram` |
-| `color` | string `#rrggbb` | `"#c8d2e6"` | base colour (surface only) |
+| `color` | string `#rrggbb` | `"#d4af37"` (gold) | base colour (surface only) |
 | `opacity` | number 0-1 | `1.0` | surface only |
 | `roughness` | number 0-1 | `0.5` | surface only |
 | `metallic` | number 0-1 | `0.0` | surface only |
@@ -105,8 +105,8 @@ One `display_settings_panel.tscn`, still instanced twice (desktop canvas, VR vie
   Surface: colour control, Opacity, Roughness, Metallic, Rim sliders, and an "Show inner
   surfaces" checkbox.
 - Colour control: desktop uses a `ColorPickerButton`; the VR instance (`is_vr`) shows a row of 8
-  preset swatch buttons instead (pale blue-grey default, bone, copper, gold, teal, crimson,
-  violet, slate). A manifest colour that matches no swatch shows no swatch selected and is kept
+  preset swatch buttons instead (gold — the default, per Dani — then pale blue-grey, bone,
+  copper, teal, crimson, violet, slate). A manifest colour that matches no swatch shows no swatch selected and is kept
   until one is pressed.
 - `get_display()` returns only the keys of the active specimen type. This matters for edit mode:
   `_save_bundle_settings` merges `get_display()` into the specimen's `display`, and today a mesh
