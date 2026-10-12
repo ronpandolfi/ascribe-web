@@ -235,9 +235,9 @@ func test_apply_display_switches_between_legacy_and_surface() -> void:
 	stage.stage("m", _build_test_mesh_data(), {"shader": "crystal"})
 	var mesh := _staged_mesh(stage)
 
-	stage.apply_display({"shader": "hologram"})
+	stage.apply_display({"shader": "holographic"})
 	var holo: ShaderMaterial = mesh.get_surface_override_material(0)
-	assert_that(holo.shader.resource_path).is_equal("res://shaders/hologram.gdshader")
+	assert_that(holo.shader.resource_path).is_equal("res://shaders/holographic.gdshader")
 
 	stage.apply_display({"shader": "surface", "color": "#2a9d8f"})
 	var surf: StandardMaterial3D = mesh.get_surface_override_material(0)
@@ -319,3 +319,14 @@ func test_set_eye_offsets_ignores_a_staged_mesh() -> void:
 	stage.set_eye_offsets(Vector3(-0.032, 0, 0), Vector3(0.032, 0, 0))
 
 	assert_that(_staged_mesh(stage).get_surface_override_material(0) is StandardMaterial3D).is_true()
+
+
+# Crystal is translucent with no depth writes, so overlapping parts blended in triangle order and
+# showed as speckled triangles. Like nearest-surface, it gets a depth-only pass drawn first.
+func test_crystal_gets_a_depth_pass() -> void:
+	var stage: SpecimenStage = auto_free(SpecimenStage.new())
+	add_child(stage)
+	stage.stage("m", _build_test_mesh_data(), {"shader": "crystal"})
+	var mat: ShaderMaterial = _staged_mesh(stage).get_surface_override_material(0)
+	assert_that(mat.next_pass is ShaderMaterial).is_true()
+	assert_int(mat.next_pass.render_priority).is_less(mat.render_priority)

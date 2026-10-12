@@ -13,6 +13,11 @@ var current_id: String = ""
 const MESH_DISPLAY_KEYS := ["shader", "color", "opacity", "roughness", "metallic", "rim",
 	"inner_surfaces"]
 
+## Translucent legacy shaders that blend without writing depth. Their overlapping parts would
+## composite in triangle order (speckled triangles), so they get a depth-only pass first and show
+## only their nearest surface.
+const DEPTH_PASS_SHADERS := ["crystal"]
+
 ## The staged mesh's display, accumulated across apply_display() calls, so a partial update
 ## (one slider) never resets the rest of the look.
 var _mesh_display: Dictionary = {}
@@ -257,6 +262,8 @@ func _apply_mesh_material(mesh_instance: MeshInstance3D) -> void:
 		return
 	var mat := _resolve_mesh_material(shader)
 	if mat != null:
+		if shader in DEPTH_PASS_SHADERS:
+			mat.next_pass = MeshSurfaceMaterial.depth_pass_for(mat)
 		mat.set_meta("mesh_shader", shader)
 		mesh_instance.set_surface_override_material(0, mat)
 

@@ -23,7 +23,7 @@ from .volume import convert_volume, load_volume
 # The tunable `surface` material plus the three legacy looks that render correctly on a mesh.
 # The others (glass, jello, edges, brick, holographic, water) were removed: they were invisible
 # on the viewer's black background or needed UVs that mesh envelopes do not carry.
-MESH_SHADERS = ["surface", "pearl", "crystal", "hologram"]
+MESH_SHADERS = ["surface", "pearl", "crystal", "holographic"]
 
 
 def build(args) -> int:
@@ -319,7 +319,7 @@ def main(argv=None) -> int:
                    help="gamma applied to the value before the transfer function is looked up")
     b.add_argument("--shader", choices=MESH_SHADERS, default="surface",
                    help="mesh material (default: surface, the tunable one; pearl, crystal and "
-                        "hologram are fixed looks)")
+                        "holographic are fixed looks)")
     b.add_argument("--color", type=_hex_color, default=None, metavar="#RRGGBB",
                    help="mesh base colour for the surface shader (default gold, #d4af37). "
                         "Quote it in PowerShell, where an unquoted # starts a comment")

@@ -7,7 +7,7 @@ extends RefCounted
 
 ## Mesh shader names a bundle may use. `surface` is this material; the rest are fixed-look
 ## shaders under res://shaders/.
-const SHADERS := ["surface", "pearl", "crystal", "hologram"]
+const SHADERS := ["surface", "pearl", "crystal", "holographic"]
 const DEFAULT_COLOR := "#d4af37"
 const DEPTH_ONLY := preload("res://shaders/depth_only.gdshader")
 
@@ -67,19 +67,13 @@ static func apply(mat: StandardMaterial3D, display: Dictionary) -> void:
 	# opacity, blending without depth writes would draw far surfaces over near ones.
 	var inner: bool = s["inner_surfaces"] and s["opacity"] < 1.0
 	if inner:
-		# Back faces first (the next pass, sorted ahead by its lower render_priority), then front
-		# faces. Blending both in one unsorted draw composited half of each quad before the far
-		# wall and half after, which showed as alternating triangles.
-		_set_config(mat, BaseMaterial3D.TRANSPARENCY_ALPHA, BaseMaterial3D.CULL_BACK,
-			BaseMaterial3D.DEPTH_DRAW_DISABLED)
-		var back := mat.next_pass as StandardMaterial3D
-		if back == null:
-			back = _new_surface()
-			_set_config(back, BaseMaterial3D.TRANSPARENCY_ALPHA, BaseMaterial3D.CULL_FRONT,
-				BaseMaterial3D.DEPTH_DRAW_DISABLED)
-			back.render_priority = mat.render_priority - 1
-			mat.next_pass = back
-		_set_look(back, s)
+		# Every layer, additively. Triangles are drawn in index order, not depth order, and
+		# "over" blending depends on order -- overlapping layers showed as speckled triangles.
+		# Addition is commutative, so the result is the same whatever the draw order: an x-ray
+		# look, brighter where layers stack.
+		_set_config(mat, BaseMaterial3D.TRANSPARENCY_ALPHA, BaseMaterial3D.CULL_DISABLED,
+			BaseMaterial3D.DEPTH_DRAW_DISABLED, BaseMaterial3D.BLEND_MODE_ADD)
+		mat.next_pass = null
 	else:
 		# Nearest surface: one blended shell. Both faces, so open meshes (CAD shells, cut
 		# isosurfaces) show their inside instead of holes; Godot flips back-face normals so they
@@ -87,12 +81,18 @@ static func apply(mat: StandardMaterial3D, display: Dictionary) -> void:
 		# depth-only pass sorted ahead of this one makes only the nearest surface pass the depth
 		# test. Used at full opacity too, so opacity never changes the configuration.
 		_set_config(mat, BaseMaterial3D.TRANSPARENCY_ALPHA_DEPTH_PRE_PASS,
-			BaseMaterial3D.CULL_DISABLED, BaseMaterial3D.DEPTH_DRAW_OPAQUE_ONLY)
+			BaseMaterial3D.CULL_DISABLED, BaseMaterial3D.DEPTH_DRAW_OPAQUE_ONLY,
+			BaseMaterial3D.BLEND_MODE_MIX)
 		if not (mat.next_pass is ShaderMaterial):
-			var depth_pass := ShaderMaterial.new()
-			depth_pass.shader = DEPTH_ONLY
-			depth_pass.render_priority = mat.render_priority - 1
-			mat.next_pass = depth_pass
+			mat.next_pass = depth_pass_for(mat)
+
+
+## A depth-only pass to put ahead of `mat`, so only its nearest surface passes the depth test.
+static func depth_pass_for(mat: Material) -> ShaderMaterial:
+	var depth_pass := ShaderMaterial.new()
+	depth_pass.shader = DEPTH_ONLY
+	depth_pass.render_priority = mat.render_priority - 1
+	return depth_pass
 
 
 static func _new_surface() -> StandardMaterial3D:
@@ -115,13 +115,16 @@ static func _set_look(mat: StandardMaterial3D, s: Dictionary) -> void:
 
 ## Assigns only what differs: each of these is part of the shader variant.
 static func _set_config(mat: StandardMaterial3D, transparency: BaseMaterial3D.Transparency,
-		cull: BaseMaterial3D.CullMode, depth: BaseMaterial3D.DepthDrawMode) -> void:
+		cull: BaseMaterial3D.CullMode, depth: BaseMaterial3D.DepthDrawMode,
+		blend: BaseMaterial3D.BlendMode) -> void:
 	if mat.transparency != transparency:
 		mat.transparency = transparency
 	if mat.cull_mode != cull:
 		mat.cull_mode = cull
 	if mat.depth_draw_mode != depth:
 		mat.depth_draw_mode = depth
+	if mat.blend_mode != blend:
+		mat.blend_mode = blend
 
 
 static func _pin_variants() -> void:

@@ -7,7 +7,7 @@ extends VBoxContainer
 signal changed
 
 const SHADER_LABELS := {"surface": "Surface", "pearl": "Pearl", "crystal": "Crystal",
-	"hologram": "Hologram"}
+	"holographic": "Holographic"}
 ## Colour presets for the in-VR panel, where a colour picker is fiddly to drive with a laser
 ## pointer. Gold first: it is the default.
 const SWATCHES := ["#d4af37", "#c8d2e6", "#e3dac9", "#b87333", "#2a9d8f", "#c0392b", "#8e44ad",

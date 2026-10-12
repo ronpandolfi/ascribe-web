@@ -20,18 +20,16 @@ func test_translucent_nearest_surface_uses_depth_prepass() -> void:
 	assert_float(mat.albedo_color.a).is_equal_approx(0.4, 0.001)
 
 
-# Ron saw alternating triangles: in one blended draw, half of each quad composited before the
-# far wall and half after. Back faces now get their own pass, drawn first.
-func test_inner_surfaces_draw_back_faces_then_front_faces() -> void:
+# Ron saw triangles wherever translucent layers overlapped: "over" blending depends on draw
+# order, and triangles are drawn in index order, not depth order. Additive blending is
+# commutative, so inner surfaces no longer depend on order at all.
+func test_inner_surfaces_blend_additively_in_one_pass() -> void:
 	var mat := MeshSurfaceMaterial.build({"opacity": 0.4, "inner_surfaces": true})
+	assert_int(mat.blend_mode).is_equal(BaseMaterial3D.BLEND_MODE_ADD)
 	assert_int(mat.transparency).is_equal(BaseMaterial3D.TRANSPARENCY_ALPHA)
 	assert_int(mat.depth_draw_mode).is_equal(BaseMaterial3D.DEPTH_DRAW_DISABLED)
-	assert_int(mat.cull_mode).is_equal(BaseMaterial3D.CULL_BACK)
-	var back := mat.next_pass as StandardMaterial3D
-	assert_that(back).is_not_null()
-	assert_int(back.cull_mode).is_equal(BaseMaterial3D.CULL_FRONT)
-	assert_int(back.render_priority).is_less(mat.render_priority)
-	assert_float(back.albedo_color.a).is_equal_approx(0.4, 0.001)
+	assert_int(mat.cull_mode).is_equal(BaseMaterial3D.CULL_DISABLED)
+	assert_that(mat.next_pass).is_null()
 
 
 # Blending without depth writes at full opacity would draw far surfaces over near ones.
@@ -60,6 +58,7 @@ func test_slider_changes_never_change_the_render_configuration() -> void:
 		MeshSurfaceMaterial.apply(mat, d)
 		assert_int(mat.transparency).is_equal(BaseMaterial3D.TRANSPARENCY_ALPHA_DEPTH_PRE_PASS)
 		assert_int(mat.cull_mode).is_equal(BaseMaterial3D.CULL_DISABLED)
+		assert_int(mat.blend_mode).is_equal(BaseMaterial3D.BLEND_MODE_MIX)
 		assert_bool(mat.rim_enabled).is_true()
 		assert_that(mat.next_pass).is_same(depth_pass)
 
@@ -94,7 +93,7 @@ func test_nearest_surface_has_a_depth_pass_drawn_first() -> void:
 func test_toggling_inner_surfaces_swaps_the_extra_pass() -> void:
 	var mat := MeshSurfaceMaterial.build({"opacity": 0.4})
 	MeshSurfaceMaterial.apply(mat, {"opacity": 0.4, "inner_surfaces": true})
-	assert_that(mat.next_pass is StandardMaterial3D).is_true()
+	assert_that(mat.next_pass).is_null()
 	MeshSurfaceMaterial.apply(mat, {"opacity": 0.4, "inner_surfaces": false})
 	assert_that(mat.next_pass is ShaderMaterial).is_true()
-	assert_int(mat.cull_mode).is_equal(BaseMaterial3D.CULL_DISABLED)
+	assert_int(mat.blend_mode).is_equal(BaseMaterial3D.BLEND_MODE_MIX)
