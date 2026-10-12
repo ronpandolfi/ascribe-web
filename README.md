@@ -90,13 +90,13 @@ their inside rather than holes), opaque gold. Its look is set in the bundle and 
   Opacity, Roughness, Metallic and Rim light sliders, and **Show inner surfaces**. In edit mode,
   **Save view + settings** writes them into `display`.
 - Translucency has two modes. By default only the nearest surface fades: the mesh fades as one
-  shell and never mis-sorts against itself. **Show inner surfaces** blends every layer instead,
-  so internal structure shows through, at the cost of some shimmer on dense meshes as the view
-  moves (triangles within one mesh are not sorted).
-- `--shader pearl|crystal|hologram` picks a fixed look instead (opaque iridescent, translucent
-  violet, unshaded orange with scan lines); the surface controls are hidden for those. Older
-  bundles naming a removed shader (`glass`, `jello`, `edges`, `brick`, `holographic`, `water`)
-  render with `surface`.
+  shell and never mis-sorts against itself. **Show inner surfaces** adds every layer instead (an
+  x-ray look, brighter where layers stack), so internal structure shows through. Additive
+  blending does not depend on draw order, so overlapping layers never break up into triangles.
+- `--shader pearl|crystal|holographic` picks a fixed look instead (opaque iridescent; translucent
+  violet showing its nearest surface; a mirror with a rainbow highlight band that follows the
+  light); the surface controls are hidden for those. Older bundles naming a removed shader
+  (`glass`, `jello`, `edges`, `brick`, `hologram`, `water`) render with `surface`.
 - `--flip-normals` reverses the triangle winding (stored as `display.flip_normals`). Correctly
   wound STLs (counter-clockwise seen from outside, which is the STL convention) render correctly
   *without* it. Reach for it only when a mesh looks dark, or you seem to be looking at its inside
@@ -261,7 +261,7 @@ Everything under a specimen's `display` in `manifest.json`, all optional:
 | `max_steps`, `step_size` | ray sampling. An authored value wins over the automatic quality tier, except in a headset, where it is capped by the XR tier so a bundle cannot cost someone their framerate |
 | `lateral_jitter` | screen-plane dither, in march steps (default 4). Breaks up the coherent moire that neighbouring rays otherwise produce, at the cost of grain. Set 0 to disable |
 | `lut_substeps` | transfer-function sub-step budget (default 192). Lower it if a headset cannot hold framerate |
-| `shader` | *meshes only*: `surface` (default, tunable), `pearl`, `crystal` or `hologram` |
+| `shader` | *meshes only*: `surface` (default, tunable), `pearl`, `crystal` or `holographic` |
 | `color` | *meshes only*: `#rrggbb` base colour (default `#d4af37`) |
 | `opacity` | for a mesh: surface alpha, 0-1 (default 1). For a volume it scales sample alpha (see above) |
 | `roughness`, `metallic`, `rim` | *meshes only*: 0-1 (defaults 0.5, 0, 0.3) |

@@ -84,7 +84,7 @@ jobs:
             --title "Torus knot (synthetic mesh)" -o build/web/knot
           # The same knot once per shader, plus a translucent one. Tiny (~0.6 MB each) and
           # generated here, so they cost the repo nothing.
-          for shader in surface pearl crystal hologram; do
+          for shader in surface pearl crystal holographic; do
             ascribe-bundle build knot.stl --shader "$shader" --story demo/knot/story.md \
               --title "Torus knot ($shader)" -o "build/web/knot_$shader"
           done

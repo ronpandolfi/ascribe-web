@@ -31,13 +31,19 @@ With a mesh staged, the panel shows mesh controls instead of the volume ones (sw
 the colour picker in VR). **Save view + settings** writes only the mesh keys.
 
 Translucency (opacity < 1) has two modes. Nearest surface (the default) fades the mesh as one
-shell, with no self-sorting errors. **Show inner surfaces** blends every layer so internal
-structure shows, but dense meshes can shimmer as the view moves. Inner surfaces at opacity 1
-renders opaque, by design.
+shell, with no self-sorting errors. **Show inner surfaces** adds every layer (x-ray), so
+internal structure shows. It is additive because "over" blending in triangle order breaks up
+into speckled triangles wherever layers overlap. Inner surfaces at opacity 1 renders opaque, by
+design.
 
-`--shader pearl|crystal|hologram` gives a fixed look and hides the surface controls. Old names
-(`glass`, `jello`, `edges`, `brick`, `holographic`, `water`) were removed, and a bundle that
-still names one renders with `surface`.
+`--shader pearl|crystal|holographic` gives a fixed look and hides the surface controls.
+Holographic is a mirror whose rainbow band comes from the light; on the black background it is
+mostly dark. Old names (`glass`, `jello`, `edges`, `brick`, `hologram`, `water`) were removed,
+and a bundle that still names one renders with `surface`.
+
+Bundles are wound counter-clockwise (the STL convention); the viewer converts to Godot's
+clockwise front faces. If a mesh looks inside-out, the file itself is wound backwards: use
+`--flip-normals`.
 
 ## Flags that matter and don't
 

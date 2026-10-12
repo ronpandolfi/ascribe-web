@@ -18,5 +18,5 @@ roughness, metallic and rim light all change live, and **Show inner surfaces** l
 translucent mesh show its own crossings.
 
 The same knot is also published with each fixed-look shader (`?bundle=knot_pearl`,
-`?bundle=knot_crystal`, `?bundle=knot_hologram`), and translucent with inner surfaces on as
+`?bundle=knot_crystal`, `?bundle=knot_holographic`), and translucent with inner surfaces on as
 `?bundle=knot_inner`.
