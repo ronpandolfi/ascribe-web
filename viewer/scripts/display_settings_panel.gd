@@ -249,10 +249,19 @@ func _on_advanced_toggled() -> void:
 	_advanced_open = not _advanced_open
 	_advanced_scroll.visible = _advanced_open
 	_advanced_toggle.text = "Advanced Settings [-]" if _advanced_open else "Advanced Settings [+]"
+	_resize_desktop()
 
-	if not is_vr and get_parent() is CanvasLayer:
-		offset_bottom = offset_top + (560.0 if _advanced_open else 260.0)
-		offset_right = offset_left + (280.0 if _advanced_open else 240.0)
+
+## Sizes the desktop panel to what it is showing. The panel is right-anchored beside the story
+## panel, so it grows leftward: widening it by moving its right edge pushed it into the story
+## panel. The in-VR instance fills its SubViewport and is left alone.
+func _resize_desktop() -> void:
+	if is_vr or not (get_parent() is CanvasLayer):
+		return
+	var width := 280.0 if _advanced_open else 240.0
+	var height := 560.0 if _advanced_open else 260.0
+	offset_left = offset_right - width
+	offset_bottom = offset_top + height
 
 
 func _update_label(lbl: Label, text: String) -> void:

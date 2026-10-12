@@ -560,3 +560,18 @@ func test_motion_adaptive_scales_steps_and_step_size_when_auto_step_disabled() -
 
 	main._on_session_ended()
 	vp.use_xr = false
+
+
+# Regression: opening Advanced widened the desktop panel by moving its right edge, which pushed
+# it 20 px into the story panel beside it. It must grow leftward instead.
+func test_advanced_settings_never_overlap_the_story_panel() -> void:
+	var main := await _make_main()
+	var panel: DisplaySettingsPanel = main.get_node("CanvasLayer/DisplaySettingsPanel")
+	var story: Control = main.get_node("CanvasLayer/StoryPanel")
+	var toggle: Button = panel.get_node("VBox/AdvancedToggle")
+
+	for _i in 3:
+		assert_float(panel.get_global_rect().end.x) \
+			.is_less_equal(story.get_global_rect().position.x)
+		toggle.emit_signal("pressed")
+		await get_tree().process_frame
