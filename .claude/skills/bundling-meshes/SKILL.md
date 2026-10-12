@@ -38,8 +38,9 @@ design.
 
 `--shader pearl|crystal|holographic` gives a fixed look and hides the surface controls.
 Holographic is self-lit (a mirrored sky gradient plus a rainbow band from a fixed, world-space
-key light), so it does not depend on the scene's lighting or background. Old names (`glass`, `jello`, `edges`, `brick`, `hologram`, `water`) were removed,
-and a bundle that still names one renders with `surface`.
+key light), so it does not depend on the scene's lighting or background. Old names (`glass`,
+`jello`, `edges`, `brick`, `hologram`, `water`) were removed, and a bundle that still names one
+renders with `surface`.
 
 Bundles are wound counter-clockwise (the STL convention); the viewer converts to Godot's
 clockwise front faces. If a mesh looks inside-out, the file itself is wound backwards: use
