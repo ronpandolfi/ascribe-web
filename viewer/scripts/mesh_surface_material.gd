@@ -9,6 +9,7 @@ extends RefCounted
 ## shaders under res://shaders/.
 const SHADERS := ["surface", "pearl", "crystal", "hologram"]
 const DEFAULT_COLOR := "#d4af37"
+const DEPTH_ONLY := preload("res://shaders/depth_only.gdshader")
 
 
 ## The shader `display` asks for, normalised. Retired or unknown names (glass, brick, ...) fall
@@ -77,3 +78,15 @@ static func apply(mat: StandardMaterial3D, display: Dictionary) -> void:
 		mat.transparency = transparency
 	if mat.depth_draw_mode != depth:
 		mat.depth_draw_mode = depth
+
+	# Nearest-surface translucency needs a depth pre-pass, which the Compatibility renderer does
+	# not do for TRANSPARENCY_ALPHA_DEPTH_PRE_PASS. A depth-only pass ordered ahead of this one
+	# (lower render_priority sorts first among transparent items) stands in for it.
+	var wants_depth_pass := transparency == BaseMaterial3D.TRANSPARENCY_ALPHA_DEPTH_PRE_PASS
+	if wants_depth_pass and mat.next_pass == null:
+		var depth_pass := ShaderMaterial.new()
+		depth_pass.shader = DEPTH_ONLY
+		depth_pass.render_priority = mat.render_priority - 1
+		mat.next_pass = depth_pass
+	elif not wants_depth_pass and mat.next_pass != null:
+		mat.next_pass = null

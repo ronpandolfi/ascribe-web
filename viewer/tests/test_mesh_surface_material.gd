@@ -57,3 +57,19 @@ func test_shader_name_normalises_and_falls_back() -> void:
 	assert_str(MeshSurfaceMaterial.shader_name({})).is_equal("surface")
 	assert_str(MeshSurfaceMaterial.shader_name({"shader": " Crystal "})).is_equal("crystal")
 	assert_str(MeshSurfaceMaterial.shader_name({"shader": "glass"})).is_equal("surface")
+
+
+# The Compatibility (WebGL2) renderer ignores TRANSPARENCY_ALPHA_DEPTH_PRE_PASS, which made the
+# nearest-surface mode render exactly like inner surfaces. A depth-only pass drawn first stands in.
+func test_nearest_surface_has_a_depth_pass_drawn_first() -> void:
+	var mat := MeshSurfaceMaterial.build({"opacity": 0.4})
+	assert_that(mat.next_pass).is_not_null()
+	assert_int(mat.next_pass.render_priority).is_less(mat.render_priority)
+
+
+func test_inner_surfaces_and_opaque_have_no_depth_pass() -> void:
+	assert_that(MeshSurfaceMaterial.build({"opacity": 0.4, "inner_surfaces": true}).next_pass).is_null()
+	assert_that(MeshSurfaceMaterial.build({}).next_pass).is_null()
+	var mat := MeshSurfaceMaterial.build({"opacity": 0.4})
+	MeshSurfaceMaterial.apply(mat, {"opacity": 1.0})
+	assert_that(mat.next_pass).is_null()
