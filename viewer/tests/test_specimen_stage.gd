@@ -307,3 +307,15 @@ func test_advanced_display_parameters_reach_the_shader() -> void:
 	assert_float(mat.get_shader_parameter("volume_render_scale")).is_equal_approx(0.75, 0.001)
 	assert_that(bool(mat.get_shader_parameter("edge_aware_upscale"))).is_false()
 
+
+
+# Regression: set_eye_offsets runs every frame in a headset and typed the staged material as a
+# ShaderMaterial, so a mesh (now a StandardMaterial3D) raised a script error on every frame.
+func test_set_eye_offsets_ignores_a_staged_mesh() -> void:
+	var stage: SpecimenStage = auto_free(SpecimenStage.new())
+	add_child(stage)
+	stage.stage("m", _build_test_mesh_data(), {})
+
+	stage.set_eye_offsets(Vector3(-0.032, 0, 0), Vector3(0.032, 0, 0))
+
+	assert_that(_staged_mesh(stage).get_surface_override_material(0) is StandardMaterial3D).is_true()

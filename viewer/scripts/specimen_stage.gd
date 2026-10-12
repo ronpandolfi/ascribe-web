@@ -229,7 +229,8 @@ func set_eye_offsets(left: Vector3, right: Vector3) -> void:
 	var mesh_instance := _current_mesh_instance()
 	if mesh_instance == null:
 		return
-	var mat: ShaderMaterial = mesh_instance.get_surface_override_material(0)
+	# Untyped on purpose: a staged mesh carries a StandardMaterial3D, and this runs every frame.
+	var mat := mesh_instance.get_surface_override_material(0) as ShaderMaterial
 	if mat == null or mat.shader != VOLUME_SHADER:
 		return
 	mat.set_shader_parameter("eye_offsets", PackedVector3Array([left, right]))

@@ -64,9 +64,10 @@ func _init() -> void:
 	for child in stage.get_children():
 		if child is MeshInstance3D:
 			mesh = child
-	var mat: ShaderMaterial = mesh.get_surface_override_material(0)
+	# A staged mesh has a StandardMaterial3D, which has no shader uniforms to poke.
+	var mat := mesh.get_surface_override_material(0) as ShaderMaterial
 	for arg in OS.get_cmdline_user_args():
-		if arg.begins_with("--param="):
+		if arg.begins_with("--param=") and mat != null:
 			var kv := arg.substr("--param=".length()).split(":")
 			var name := kv[0]
 			var value: Variant
